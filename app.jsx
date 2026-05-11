@@ -603,19 +603,19 @@ function App() {
       {/* Top bar */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0,
-        padding: '54px 24px 0', // accounts for status bar / notch
+        padding: `${54 * stageScale}px ${24 * stageScale}px 0`, // status bar / notch + scale with viewport
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         zIndex: 4,
       }}>
         <div style={{
-          fontFamily: tf.mono, fontSize: 10.5, letterSpacing: '0.22em',
+          fontFamily: tf.mono, fontSize: 10.5 * stageScale, letterSpacing: '0.22em',
           textTransform: 'uppercase', color: 'rgba(11,11,14,0.45)',
         }}>
           Swiped
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 * stageScale }}>
           <div style={{
-            fontFamily: tf.mono, fontSize: 10.5, letterSpacing: '0.14em',
+            fontFamily: tf.mono, fontSize: 10.5 * stageScale, letterSpacing: '0.14em',
             color: 'rgba(11,11,14,0.45)', fontVariantNumeric: 'tabular-nums',
             whiteSpace: 'nowrap',
           }}>
@@ -626,13 +626,14 @@ function App() {
             aria-label="Settings"
             style={{
               appearance: 'none', border: '0.5px solid rgba(11,11,14,0.1)',
-              background: 'rgba(255,255,255,0.6)', width: 30, height: 30,
+              background: 'rgba(255,255,255,0.6)',
+              width: 30 * stageScale, height: 30 * stageScale,
               borderRadius: '50%', display: 'flex', alignItems: 'center',
               justifyContent: 'center', cursor: 'pointer', padding: 0,
               color: 'rgba(11,11,14,0.6)',
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <svg width={14 * stageScale} height={14 * stageScale} viewBox="0 0 14 14" fill="none">
               <circle cx="7" cy="7" r="2" stroke="currentColor" strokeWidth="1.3" />
               <path d="M7 1v2 M7 11v2 M1 7h2 M11 7h2 M2.8 2.8l1.4 1.4 M9.8 9.8l1.4 1.4 M2.8 11.2l1.4-1.4 M9.8 4.2l1.4-1.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
             </svg>
@@ -661,6 +662,7 @@ function App() {
           accent={t.accent}
           tf={tf}
           pulseKey={pulseKey}
+          scale={stageScale}
         />
       </div>
 
@@ -809,7 +811,11 @@ function App() {
   );
 }
 
-function BriefPanel({ section, content, accent, tf, pulseKey }) {
+function BriefPanel({ section, content, accent, tf, pulseKey, scale = 1 }) {
+  // Scale typography + icon proportionally with the wheel so the brief
+  // reads at a comfortable physical size on Fold cover / tablet viewports
+  // where the CSS px-per-inch density is much higher than a phone.
+  const s = scale;
   // animated mount: fade + slight slide
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => {
@@ -822,19 +828,19 @@ function BriefPanel({ section, content, accent, tf, pulseKey }) {
         opacity: mounted ? 1 : 0,
         transform: mounted ? 'translateY(0)' : 'translateY(8px)',
         transition: 'opacity 0.32s ease-out, transform 0.32s ease-out',
-        display: 'flex', flexDirection: 'column', gap: 14,
+        display: 'flex', flexDirection: 'column', gap: 14 * s,
       }}
     >
       {/* big icon — circular avatar for person sections so uploaded photos
           read as profile pics */}
       <div style={{
-        width: 44, height: 44, color: accent, marginBottom: 6,
+        width: 44 * s, height: 44 * s, color: accent, marginBottom: 6 * s,
         borderRadius: section.contentKey === 'person' ? '50%' : 0,
         overflow: 'hidden',
       }}>
         {section.iconData
           ? <img src={section.iconData} alt="" style={{
-              width: 44, height: 44,
+              width: 44 * s, height: 44 * s,
               objectFit: section.contentKey === 'person' ? 'cover' : 'contain',
             }} />
           : (Icon[section.iconKey] || Icon.target)}
@@ -843,7 +849,7 @@ function BriefPanel({ section, content, accent, tf, pulseKey }) {
           person sections (where section.name is a person's full name, so we
           surface a generic "Person" label instead). */}
       <div style={{
-        fontFamily: tf.mono, fontSize: 11, letterSpacing: '0.2em',
+        fontFamily: tf.mono, fontSize: 11 * s, letterSpacing: '0.2em',
         textTransform: 'uppercase', color: 'rgba(11,11,14,0.5)',
       }}>
         {section.contentKey === 'person' ? 'Person' : section.name}
@@ -851,7 +857,7 @@ function BriefPanel({ section, content, accent, tf, pulseKey }) {
       {/* headline (serif italic) */}
       <div style={{
         fontFamily: tf.display, fontStyle: 'italic',
-        fontSize: 56, lineHeight: '0.95', letterSpacing: '-0.025em',
+        fontSize: 56 * s, lineHeight: '0.95', letterSpacing: '-0.025em',
         fontWeight: 400, color: '#0B0B0E',
         textWrap: 'pretty',
       }}>
@@ -859,7 +865,7 @@ function BriefPanel({ section, content, accent, tf, pulseKey }) {
       </div>
       {/* brief */}
       <div style={{
-        fontFamily: tf.family, fontSize: 17, lineHeight: 1.35,
+        fontFamily: tf.family, fontSize: 17 * s, lineHeight: 1.35,
         color: 'rgba(11,11,14,0.62)', letterSpacing: '-0.01em',
         textWrap: 'pretty',
       }}>
@@ -869,20 +875,20 @@ function BriefPanel({ section, content, accent, tf, pulseKey }) {
       {/* mini stat strip — skipped entirely when stats is empty (e.g. a
           person with no birthday set has nothing to surface here yet). */}
       {content.stats && content.stats.length > 0 && (
-        <div style={{ display: 'flex', gap: 18, marginTop: 16 }}>
-          {content.stats.slice(0, 3).map((s, i) => (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 18 * s, marginTop: 16 * s }}>
+          {content.stats.slice(0, 3).map((s2, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3 * s, minWidth: 0 }}>
               <div style={{
-                fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.14em',
+                fontFamily: tf.mono, fontSize: 9 * s, letterSpacing: '0.14em',
                 textTransform: 'uppercase', color: 'rgba(11,11,14,0.4)',
                 whiteSpace: 'nowrap',
-              }}>{s.label}</div>
+              }}>{s2.label}</div>
               <div style={{
-                fontFamily: tf.family, fontSize: 16, fontWeight: 500,
+                fontFamily: tf.family, fontSize: 16 * s, fontWeight: 500,
                 letterSpacing: '-0.01em', color: '#0B0B0E',
                 fontVariantNumeric: 'tabular-nums',
                 whiteSpace: 'nowrap',
-              }}>{s.value}</div>
+              }}>{s2.value}</div>
             </div>
           ))}
         </div>
