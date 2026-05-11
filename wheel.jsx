@@ -175,9 +175,19 @@ function Wheel({
               willChange: 'transform, opacity',
             }}
           >
-            <div style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{
+              width: 26, height: 26, display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              borderRadius: section.contentKey === 'person' ? '50%' : 0,
+              overflow: 'hidden',
+            }}>
               {section.iconData
-                ? <img src={section.iconData} alt="" style={{ width: 22, height: 22, objectFit: 'contain', filter: isSelected ? 'none' : 'opacity(0.6)' }} />
+                ? <img src={section.iconData} alt="" style={{
+                    width: section.contentKey === 'person' ? 26 : 22,
+                    height: section.contentKey === 'person' ? 26 : 22,
+                    objectFit: section.contentKey === 'person' ? 'cover' : 'contain',
+                    filter: isSelected ? 'none' : 'opacity(0.6)',
+                  }} />
                 : (Icon[section.iconKey] || Icon.target)}
             </div>
             <div
@@ -193,7 +203,12 @@ function Wheel({
                 textShadow: isSelected ? '0 1px 8px rgba(0,0,0,0.5)' : 'none',
               }}
             >
-              {section.name}
+              {/* Wheel shows only the first name for people (section.name on
+                  a person section is the full name; the rest is reserved for
+                  the detail headline). */}
+              {section.contentKey === 'person'
+                ? (section.name || '').split(/\s+/)[0]
+                : section.name}
             </div>
           </div>
         );

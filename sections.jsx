@@ -99,9 +99,23 @@ const Icon = {
       <path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" />
     </svg>
   ),
+  male: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="7" r="3.5" />
+      <path d="M5.5 20.5c0-3.4 2.9-6 6.5-6s6.5 2.6 6.5 6" />
+    </svg>
+  ),
+  female: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="7" r="3.5" />
+      <path d="M9 9.5c-1.5 0.5-2.5 2-2.5 4 M15 9.5c1.5 0.5 2.5 2 2.5 4" />
+      <path d="M7 21l2-7h6l2 7" />
+      <path d="M9 17h6" />
+    </svg>
+  ),
 };
 
-const ICON_KEYS = ['briefcase','dollar','cap','target','notebook','heart','leaf','check','book','calendar','dumbbell','home','code','music','spark','user'];
+const ICON_KEYS = ['briefcase','dollar','cap','target','notebook','heart','leaf','check','book','calendar','dumbbell','home','code','music','spark','user','male','female'];
 
 // Brief copy + full data per section template. Keys map to TWEAK_DEFAULTS.sections[].iconKey.
 const SECTION_LIB = {
@@ -298,6 +312,23 @@ const SECTION_LIB = {
       { t: '11:00', text: '+ Added 3 tasks from Mail' },
     ],
     note: 'Dentist is overdue. Stop pushing it.',
+  },
+  // Generic person/contact slot. Wheel shows first name (parsed from
+  // section.name); detail view shows full name + phones / emails / birthday /
+  // socials / notes. Each person section's contact data is stored in
+  // app.jsx's `swiped.people` map, keyed by section id.
+  person: {
+    icon: 'user',
+    headline: 'New person',
+    brief: 'Add their details',
+    stats: [
+      { label: 'Phones', value: '0' },
+      { label: 'Emails', value: '0' },
+      { label: 'Birthday', value: '—' },
+    ],
+    tasks: [],
+    log: [],
+    note: '',
   },
   reading: {
     icon: 'book',

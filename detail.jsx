@@ -10,8 +10,10 @@ function DetailView({
   schoolSemesters, setSchoolSemesters,
   schoolActiveSemesterId, selectSchoolSemester,
   schoolWeeks, setSchoolWeeks, schoolActiveWeekKey, setSchoolActiveWeekKey,
+  peopleData, setPeopleData,
 }) {
   const isSchool = (section.contentKey || section.id) === 'school';
+  const isPerson = (section.contentKey || section.id) === 'person';
 
   // Non-school sections still keep their own in-memory tasks/log/note,
   // refreshed when you swipe to a different section.
@@ -158,16 +160,22 @@ function DetailView({
           fontSize: 10.5, letterSpacing: '0.18em', textTransform: 'uppercase',
           color: 'rgba(250,128,114,0.5)',
         }}>
-          {section.name}
+          {isPerson ? 'Person' : section.name}
         </div>
         <div style={{ width: 34 }} />
       </div>
 
       {/* Headline */}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: 22 }}>
-        <div style={{ width: 32, height: 32, color: FG_WHITE }}>
+        <div style={{
+          width: 32, height: 32, color: FG_WHITE,
+          borderRadius: isPerson ? '50%' : 0, overflow: 'hidden',
+        }}>
           {section.iconData
-            ? <img src={section.iconData} alt="" style={{ width: 32, height: 32, objectFit: 'contain' }} />
+            ? <img src={section.iconData} alt="" style={{
+                width: 32, height: 32,
+                objectFit: isPerson ? 'cover' : 'contain',
+              }} />
             : (Icon[section.iconKey] || Icon.target)}
         </div>
         <div style={{
@@ -179,43 +187,45 @@ function DetailView({
         </div>
       </div>
 
-      {/* Quick-add */}
-      <form onSubmit={onSubmit} style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '10px 12px', borderRadius: 14,
-        background: 'rgba(255,255,255,0.06)',
-        border: '0.5px solid rgba(255,255,255,0.1)',
-        marginBottom: 22,
-      }}>
-        <div style={{ width: 16, height: 16, color: 'rgba(255,255,255,0.45)' }}>
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-            <path d="M8 3v10 M3 8h10" />
-          </svg>
-        </div>
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={isSchool ? 'Quick add to this week…' : 'Quick add to this section…'}
-          style={{
-            flex: 1, background: 'transparent', border: 0, outline: 'none',
-            color: FG_PINK, fontFamily: 'Geist, ui-sans-serif, system-ui',
-            fontSize: 14, padding: 0,
-          }}
-        />
-        {draft && (
-          <button
-            type="submit"
+      {/* Quick-add — hidden for person sections, which have their own editors */}
+      {!isPerson && (
+        <form onSubmit={onSubmit} style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 12px', borderRadius: 14,
+          background: 'rgba(255,255,255,0.06)',
+          border: '0.5px solid rgba(255,255,255,0.1)',
+          marginBottom: 22,
+        }}>
+          <div style={{ width: 16, height: 16, color: 'rgba(255,255,255,0.45)' }}>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+              <path d="M8 3v10 M3 8h10" />
+            </svg>
+          </div>
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={isSchool ? 'Quick add to this week…' : 'Quick add to this section…'}
             style={{
-              appearance: 'none', border: 0, padding: '4px 10px',
-              background: accent, color: '#0B0B0E',
-              fontFamily: 'Geist Mono, ui-monospace, monospace',
-              fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
-              borderRadius: 8, fontWeight: 600, cursor: 'pointer',
+              flex: 1, background: 'transparent', border: 0, outline: 'none',
+              color: FG_PINK, fontFamily: 'Geist, ui-sans-serif, system-ui',
+              fontSize: 14, padding: 0,
             }}
-          >Add</button>
-        )}
-      </form>
+          />
+          {draft && (
+            <button
+              type="submit"
+              style={{
+                appearance: 'none', border: 0, padding: '4px 10px',
+                background: accent, color: '#0B0B0E',
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
+                borderRadius: 8, fontWeight: 600, cursor: 'pointer',
+              }}
+            >Add</button>
+          )}
+        </form>
+      )}
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, marginBottom: 22,
@@ -251,7 +261,14 @@ function DetailView({
           />
         )}
 
-        {isSchool ? (
+        {isPerson ? (
+          <PersonDetails
+            section={section}
+            peopleData={peopleData}
+            setPeopleData={setPeopleData}
+            accent={accent}
+          />
+        ) : isSchool ? (
           <WeeklyView
             weekKey={schoolActiveWeekKey}
             setWeekKey={setSchoolActiveWeekKey}
@@ -1155,6 +1172,183 @@ function CalendarPicker({ selected, onPick, onClose, accent }) {
             fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
           }}
         >Close</button>
+      </div>
+    </div>
+  );
+}
+
+// Person sections (people on the scroll wheel). The wheel shows only the
+// first name (parsed from section.name); this view edits the full name plus
+// phones / emails / birthday / socials / notes. All edits are persisted via
+// the parent's peopleData map (keyed by section id) in app.jsx.
+function PersonDetails({ section, peopleData, setPeopleData, accent }) {
+  const data = peopleData[section.id] || {
+    phones: [], emails: [], socials: [], birthday: '', notes: '',
+  };
+
+  const patch = (updater) => {
+    setPeopleData((prev) => {
+      const cur = prev[section.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '' };
+      return { ...prev, [section.id]: updater(cur) };
+    });
+  };
+
+  // The wheel pulls section.name (full name string) — we keep it editable here
+  // so users can type their first + last name in one field and the wheel
+  // mirrors the first word automatically.
+  // section.name isn't owned by PersonDetails directly; we'd need a callback
+  // to mutate the section list. For now expose firstName/lastName-style edits
+  // via a separate input that dispatches a synthesized rename request through
+  // a window-level event the parent listens to. Simpler: just show the name
+  // and tell users to rename it from Settings.
+  // (kept inline for clarity — see SettingsSheet for rename UX.)
+
+  const fieldStyle = {
+    background: 'rgba(255,255,255,0.06)',
+    border: '0.5px solid rgba(255,255,255,0.12)',
+    color: FG_PINK,
+    borderRadius: 10,
+    padding: '10px 12px',
+    outline: 'none',
+    fontFamily: 'Geist, ui-sans-serif, system-ui',
+    fontSize: 14,
+    boxSizing: 'border-box',
+  };
+  const labelStyle = {
+    fontFamily: 'Geist Mono, ui-monospace, monospace',
+    fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+    color: 'rgba(250,128,114,0.55)',
+  };
+  const xBtnStyle = {
+    appearance: 'none', border: 0, background: 'transparent',
+    color: 'rgba(250,128,114,0.45)', cursor: 'pointer',
+    padding: 4, fontSize: 16, lineHeight: 1, flexShrink: 0,
+  };
+  const addLinkStyle = {
+    appearance: 'none', border: 0, background: 'transparent',
+    color: accent, cursor: 'pointer', padding: '6px 0',
+    fontFamily: 'Geist Mono, ui-monospace, monospace',
+    fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+    fontWeight: 600,
+  };
+
+  const addRow = (key, seed) => patch((c) => ({ ...c, [key]: [...(c[key] || []), { id: Date.now() + Math.random(), ...seed }] }));
+  const updateRow = (key, id, p) => patch((c) => ({ ...c, [key]: (c[key] || []).map((r) => (r.id === id ? { ...r, ...p } : r)) }));
+  const removeRow = (key, id) => patch((c) => ({ ...c, [key]: (c[key] || []).filter((r) => r.id !== id) }));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      {/* Phones */}
+      <div>
+        <SectionTitle>Phones</SectionTitle>
+        {(data.phones || []).map((p) => (
+          <div key={p.id} style={{
+            display: 'grid', gridTemplateColumns: '90px 1fr 28px',
+            gap: 8, marginBottom: 8, alignItems: 'center',
+          }}>
+            <input
+              value={p.label} placeholder="Mobile"
+              onChange={(e) => updateRow('phones', p.id, { label: e.target.value })}
+              style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
+            />
+            <input
+              type="tel" inputMode="tel"
+              value={p.value} placeholder="+1 555 0123"
+              onChange={(e) => updateRow('phones', p.id, { value: e.target.value })}
+              style={fieldStyle}
+            />
+            <button onClick={() => removeRow('phones', p.id)} aria-label="Remove" style={xBtnStyle}>×</button>
+          </div>
+        ))}
+        <button onClick={() => addRow('phones', { label: 'Mobile', value: '' })} style={addLinkStyle}>
+          + Add phone
+        </button>
+      </div>
+
+      {/* Emails */}
+      <div>
+        <SectionTitle>Emails</SectionTitle>
+        {(data.emails || []).map((m) => (
+          <div key={m.id} style={{
+            display: 'grid', gridTemplateColumns: '90px 1fr 28px',
+            gap: 8, marginBottom: 8, alignItems: 'center',
+          }}>
+            <input
+              value={m.label} placeholder="Personal"
+              onChange={(e) => updateRow('emails', m.id, { label: e.target.value })}
+              style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
+            />
+            <input
+              type="email" inputMode="email" autoCapitalize="off" autoCorrect="off"
+              value={m.value} placeholder="name@example.com"
+              onChange={(e) => updateRow('emails', m.id, { value: e.target.value })}
+              style={fieldStyle}
+            />
+            <button onClick={() => removeRow('emails', m.id)} aria-label="Remove" style={xBtnStyle}>×</button>
+          </div>
+        ))}
+        <button onClick={() => addRow('emails', { label: 'Personal', value: '' })} style={addLinkStyle}>
+          + Add email
+        </button>
+      </div>
+
+      {/* Birthday */}
+      <div>
+        <SectionTitle>Birthday</SectionTitle>
+        <input
+          type="date"
+          value={data.birthday || ''}
+          onChange={(e) => patch((c) => ({ ...c, birthday: e.target.value }))}
+          style={{
+            ...fieldStyle,
+            width: '100%',
+            colorScheme: 'dark',
+          }}
+        />
+      </div>
+
+      {/* Socials */}
+      <div>
+        <SectionTitle>Social</SectionTitle>
+        {(data.socials || []).map((s) => (
+          <div key={s.id} style={{
+            display: 'grid', gridTemplateColumns: '110px 1fr 28px',
+            gap: 8, marginBottom: 8, alignItems: 'center',
+          }}>
+            <input
+              value={s.platform} placeholder="Instagram"
+              onChange={(e) => updateRow('socials', s.id, { platform: e.target.value })}
+              style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
+            />
+            <input
+              value={s.handle} placeholder="@handle"
+              autoCapitalize="off" autoCorrect="off"
+              onChange={(e) => updateRow('socials', s.id, { handle: e.target.value })}
+              style={fieldStyle}
+            />
+            <button onClick={() => removeRow('socials', s.id)} aria-label="Remove" style={xBtnStyle}>×</button>
+          </div>
+        ))}
+        <button onClick={() => addRow('socials', { platform: 'Instagram', handle: '' })} style={addLinkStyle}>
+          + Add social
+        </button>
+      </div>
+
+      {/* Notes */}
+      <div>
+        <SectionTitle>Notes</SectionTitle>
+        <NoteField
+          value={data.notes || ''}
+          onChange={(v) => patch((c) => ({ ...c, notes: v }))}
+        />
+      </div>
+
+      <div style={{
+        fontFamily: 'Geist Mono, ui-monospace, monospace',
+        fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+        color: 'rgba(250,128,114,0.35)', textAlign: 'center', paddingTop: 6,
+      }}>
+        Rename or change avatar in Settings (gear)
       </div>
     </div>
   );

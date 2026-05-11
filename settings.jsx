@@ -256,7 +256,12 @@ function SectionRow({ section, accent, tf, onName, onContent, onIcon, onRemove,
           outlineOffset: 1,
         }}>
           {section.iconData
-            ? <img src={section.iconData} alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+            ? <img src={section.iconData} alt="" style={{
+                width: section.contentKey === 'person' ? 28 : 22,
+                height: section.contentKey === 'person' ? 28 : 22,
+                objectFit: section.contentKey === 'person' ? 'cover' : 'contain',
+                borderRadius: section.contentKey === 'person' ? '50%' : 0,
+              }} />
             : <div style={{ width: 20, height: 20 }}>{Icon[section.iconKey] || Icon.spark}</div>}
         </button>
 

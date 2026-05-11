@@ -138,6 +138,10 @@ function App() {
     }
   );
 
+  // People sections — { [sectionId]: { phones, emails, birthday, notes, socials } }.
+  // Keys are the section id (one entry per "person" section on the wheel).
+  const [peopleData, setPeopleData] = usePersistedState('swiped.people', () => ({}));
+
   // Picking a semester also jumps the weekly view to that semester's default
   // week (first week of Jan/Jun/Aug, or today if the semester is current).
   // User can still navigate freely afterward.
@@ -150,11 +154,12 @@ function App() {
     }
   };
 
-  // Wipe every persisted school field back to the seed defaults. Behind a
-  // confirm so it's not accidentally tappable.
+  // Wipe every persisted section field back to the seed defaults — school
+  // (semesters / classes / weekly tasks / notes) and people (contacts).
+  // Behind a confirm so it's not accidentally tappable.
   const resetSchoolData = () => {
     const ok = typeof window !== 'undefined' && window.confirm(
-      'Reset school data? This clears your semesters, classes, weekly tasks, and notes.'
+      'Reset section data? This clears your semesters, classes, weekly tasks, notes, and person contacts.'
     );
     if (!ok) return;
     try {
@@ -162,6 +167,7 @@ function App() {
       localStorage.removeItem('swiped.school.activeSemesterId');
       localStorage.removeItem('swiped.school.weeks');
       localStorage.removeItem('swiped.school.activeWeekKey');
+      localStorage.removeItem('swiped.people');
     } catch (e) { /* ignore */ }
     const seedSemesters = SECTION_LIB.school.semesters;
     const seedSem = seedSemesters[0];
@@ -177,6 +183,7 @@ function App() {
       },
     });
     setSchoolActiveWeekKey(seedKey);
+    setPeopleData({});
   };
 
   // Sheet gesture state. `finger` is the live (or last) pointer position;
@@ -309,25 +316,55 @@ function App() {
   const baseContent = SECTION_LIB[contentKey] || SECTION_LIB.work;
 
   // For school, derive the live stats: overall GPA + total non-future credits.
-  // "Credits" sits right after GPA so the headline + detail grid read
-  // GPA / Credits / Due. Both numbers exclude any semester marked Future.
+  // For person, headline becomes the full name and stats show live counts +
+  // days-until-birthday. Other sections use the seeded content as-is.
   const content = React.useMemo(() => {
-    if (contentKey !== 'school') return baseContent;
-    const overall = calcOverallGPA(schoolSemesters);
-    const gpaStr = overall.gpa == null ? '—' : overall.gpa.toFixed(2);
-    const dueStat = baseContent.stats.find((s) => /due/i.test(s.label))
-      || baseContent.stats[1]
-      || { label: 'Due ≤7d', value: '0' };
-    return {
-      ...baseContent,
-      stats: [
-        { label: 'GPA', value: gpaStr },
-        { label: 'Credits', value: String(overall.credits) },
-        dueStat,
-      ],
-      semesters: schoolSemesters,
-    };
-  }, [contentKey, baseContent, schoolSemesters]);
+    if (contentKey === 'school') {
+      const overall = calcOverallGPA(schoolSemesters);
+      const gpaStr = overall.gpa == null ? '—' : overall.gpa.toFixed(2);
+      const dueStat = baseContent.stats.find((s) => /due/i.test(s.label))
+        || baseContent.stats[1]
+        || { label: 'Due ≤7d', value: '0' };
+      return {
+        ...baseContent,
+        stats: [
+          { label: 'GPA', value: gpaStr },
+          { label: 'Credits', value: String(overall.credits) },
+          dueStat,
+        ],
+        semesters: schoolSemesters,
+      };
+    }
+    if (contentKey === 'person') {
+      const pd = peopleData[selected?.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '' };
+      // Days until next occurrence of the birthday (month/day).
+      let bday = '—';
+      if (pd.birthday) {
+        const [y, m, d] = pd.birthday.split('-').map(Number);
+        if (m && d) {
+          const now = new Date(); now.setHours(0, 0, 0, 0);
+          let next = new Date(now.getFullYear(), m - 1, d);
+          if (next < now) next = new Date(now.getFullYear() + 1, m - 1, d);
+          const days = Math.round((next - now) / 86400000);
+          bday = days === 0 ? 'Today' : `${days}d`;
+        }
+      }
+      const fullName = selected?.name || baseContent.headline;
+      return {
+        ...baseContent,
+        headline: fullName,
+        brief: pd.birthday || pd.phones?.length || pd.emails?.length
+          ? `${pd.phones?.length || 0} phones · ${pd.emails?.length || 0} emails`
+          : 'Add their details',
+        stats: [
+          { label: 'Phones', value: String(pd.phones?.length || 0) },
+          { label: 'Emails', value: String(pd.emails?.length || 0) },
+          { label: 'Birthday', value: bday },
+        ],
+      };
+    }
+    return baseContent;
+  }, [contentKey, baseContent, schoolSemesters, peopleData, selected]);
 
   // For the wheel's icon lookup, ensure each section has a valid iconKey
   const wheelSections = sections.map((s) => ({
@@ -512,6 +549,8 @@ function App() {
               setSchoolWeeks={setSchoolWeeks}
               schoolActiveWeekKey={schoolActiveWeekKey}
               setSchoolActiveWeekKey={setSchoolActiveWeekKey}
+              peopleData={peopleData}
+              setPeopleData={setPeopleData}
             />
           </div>
         </div>
@@ -592,18 +631,28 @@ function BriefPanel({ section, content, accent, tf, pulseKey }) {
         display: 'flex', flexDirection: 'column', gap: 14,
       }}
     >
-      {/* big icon */}
-      <div style={{ width: 44, height: 44, color: accent, marginBottom: 6 }}>
+      {/* big icon — circular avatar for person sections so uploaded photos
+          read as profile pics */}
+      <div style={{
+        width: 44, height: 44, color: accent, marginBottom: 6,
+        borderRadius: section.contentKey === 'person' ? '50%' : 0,
+        overflow: 'hidden',
+      }}>
         {section.iconData
-          ? <img src={section.iconData} alt="" style={{ width: 44, height: 44, objectFit: 'contain' }} />
+          ? <img src={section.iconData} alt="" style={{
+              width: 44, height: 44,
+              objectFit: section.contentKey === 'person' ? 'cover' : 'contain',
+            }} />
           : (Icon[section.iconKey] || Icon.target)}
       </div>
-      {/* section name in mono */}
+      {/* section name in mono — literal section name for everything except
+          person sections (where section.name is a person's full name, so we
+          surface a generic "Person" label instead). */}
       <div style={{
         fontFamily: tf.mono, fontSize: 11, letterSpacing: '0.2em',
         textTransform: 'uppercase', color: 'rgba(11,11,14,0.5)',
       }}>
-        {section.name}
+        {section.contentKey === 'person' ? 'Person' : section.name}
       </div>
       {/* headline (serif italic) */}
       <div style={{
