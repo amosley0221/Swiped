@@ -239,14 +239,23 @@ function App() {
   const contentKey = selected?.contentKey || selected?.id;
   const baseContent = SECTION_LIB[contentKey] || SECTION_LIB.work;
 
-  // For school, swap the static GPA stat with the live computed one.
+  // For school, derive the live stats: overall GPA + total non-future credits.
+  // "Credits" sits right after GPA so the headline + detail grid read
+  // GPA / Credits / Due. Both numbers exclude any semester marked Future.
   const content = React.useMemo(() => {
     if (contentKey !== 'school') return baseContent;
     const overall = calcOverallGPA(schoolSemesters);
     const gpaStr = overall.gpa == null ? '—' : overall.gpa.toFixed(2);
+    const dueStat = baseContent.stats.find((s) => /due/i.test(s.label))
+      || baseContent.stats[1]
+      || { label: 'Due ≤7d', value: '0' };
     return {
       ...baseContent,
-      stats: baseContent.stats.map((s, i) => (i === 0 ? { ...s, value: gpaStr } : s)),
+      stats: [
+        { label: 'GPA', value: gpaStr },
+        { label: 'Credits', value: String(overall.credits) },
+        dueStat,
+      ],
       semesters: schoolSemesters,
     };
   }, [contentKey, baseContent, schoolSemesters]);
