@@ -12,6 +12,7 @@ function DetailView({
   schoolWeeks, setSchoolWeeks, schoolActiveWeekKey, setSchoolActiveWeekKey,
   peopleData, setPeopleData,
   userName, setUserName,
+  sections, updateSection,
 }) {
   const isSchool = (section.contentKey || section.id) === 'school';
   const isPerson = (section.contentKey || section.id) === 'person';
@@ -229,9 +230,17 @@ function DetailView({
         </form>
       )}
 
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, marginBottom: 22,
-                    background: 'rgba(255,255,255,0.08)', borderRadius: 14, overflow: 'hidden' }}>
+      {/* Stats — fits 1 / 2 / 3 columns to whatever the section publishes,
+          and hides itself entirely when there's nothing to show. */}
+      {content.stats && content.stats.length > 0 && (
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: content.stats.length === 1 ? '1fr'
+          : content.stats.length === 2 ? '1fr 1fr'
+          : '1fr 1fr 1fr',
+        gap: 1, marginBottom: 22,
+        background: 'rgba(255,255,255,0.08)', borderRadius: 14, overflow: 'hidden',
+      }}>
         {content.stats.map((s, i) => (
           <div key={i} style={{
             background: '#0B0B0E', padding: '12px 14px',
@@ -250,6 +259,7 @@ function DetailView({
           </div>
         ))}
       </div>
+      )}
 
       {/* Scroll region */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', marginRight: -8, paddingRight: 8 }}>
@@ -268,12 +278,16 @@ function DetailView({
             userName={userName}
             setUserName={setUserName}
             accent={accent}
+            sections={sections}
+            peopleData={peopleData}
+            setPeopleData={setPeopleData}
           />
         ) : isPerson ? (
           <PersonDetails
             section={section}
             peopleData={peopleData}
             setPeopleData={setPeopleData}
+            updateSection={updateSection}
             accent={accent}
           />
         ) : isSchool ? (
@@ -1223,16 +1237,41 @@ function openLink(href) {
   window.open(href, '_blank', 'noopener,noreferrer');
 }
 
-function PersonDetails({ section, peopleData, setPeopleData, accent }) {
+function PersonDetails({ section, peopleData, setPeopleData, updateSection, accent }) {
   const data = peopleData[section.id] || {
-    phones: [], emails: [], socials: [], birthday: '', notes: '',
+    phones: [], emails: [], socials: [], birthday: '', notes: '', reminders: [],
   };
+  const [newReminder, setNewReminder] = React.useState('');
+  const fileRef = React.useRef(null);
 
   const patch = (updater) => {
     setPeopleData((prev) => {
-      const cur = prev[section.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '' };
+      const cur = prev[section.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '', reminders: [] };
       return { ...prev, [section.id]: updater(cur) };
     });
+  };
+
+  const onUploadPhoto = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => updateSection && updateSection({ iconData: r.result, iconKey: null });
+    r.readAsDataURL(f);
+    e.target.value = '';
+  };
+
+  const addReminder = (e) => {
+    e?.preventDefault?.();
+    const text = newReminder.trim();
+    if (!text) return;
+    patch((c) => ({ ...c, reminders: [{ id: Date.now() + Math.random(), text, done: false, createdAt: Date.now() }, ...(c.reminders || [])] }));
+    setNewReminder('');
+  };
+  const toggleReminder = (id) => {
+    patch((c) => ({ ...c, reminders: (c.reminders || []).map((r) => (r.id === id ? { ...r, done: !r.done } : r)) }));
+  };
+  const removeReminder = (id) => {
+    patch((c) => ({ ...c, reminders: (c.reminders || []).filter((r) => r.id !== id) }));
   };
 
   const fieldStyle = {
@@ -1282,8 +1321,177 @@ function PersonDetails({ section, peopleData, setPeopleData, accent }) {
   const updateRow = (key, id, p) => patch((c) => ({ ...c, [key]: (c[key] || []).map((r) => (r.id === id ? { ...r, ...p } : r)) }));
   const removeRow = (key, id) => patch((c) => ({ ...c, [key]: (c[key] || []).filter((r) => r.id !== id) }));
 
+  const avatarChip = (active, onClick, label) => (
+    <button
+      onClick={onClick}
+      style={{
+        appearance: 'none', cursor: 'pointer',
+        border: `0.5px ${active ? 'solid' : 'dashed'} ${active ? accent : 'rgba(255,255,255,0.18)'}`,
+        background: active ? 'rgba(79,168,98,0.12)' : 'transparent',
+        color: active ? accent : 'rgba(250,128,114,0.7)',
+        padding: '6px 10px', borderRadius: 999,
+        fontFamily: 'Geist Mono, ui-monospace, monospace',
+        fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
+      }}
+    >{label}</button>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      {/* Identity — avatar + full name + avatar picker. Persists changes
+          straight into the section list (so the wheel updates in real-time)
+          via the updateSection callback from app.jsx. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%',
+            background: 'rgba(255,255,255,0.05)',
+            border: '0.5px solid rgba(255,255,255,0.12)',
+            overflow: 'hidden', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: FG_WHITE,
+          }}>
+            {section.iconData
+              ? <img src={section.iconData} alt="" style={{ width: 56, height: 56, objectFit: 'cover' }} />
+              : <div style={{ width: 32, height: 32 }}>{Icon[section.iconKey] || Icon.user}</div>}
+          </div>
+          <input
+            value={section.name || ''}
+            onChange={(e) => updateSection && updateSection({ name: e.target.value })}
+            placeholder="Full name"
+            autoCapitalize="words"
+            style={{
+              flex: 1, minWidth: 0,
+              background: 'transparent', border: 0,
+              borderBottom: '0.5px solid rgba(255,255,255,0.15)',
+              color: FG_PINK, outline: 'none',
+              fontFamily: '"Instrument Serif", Georgia, serif',
+              fontStyle: 'italic', fontSize: 22, padding: '4px 0',
+            }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {avatarChip(
+            !section.iconData && section.iconKey === 'male',
+            () => updateSection && updateSection({ iconKey: 'male', iconData: null }),
+            'Male'
+          )}
+          {avatarChip(
+            !section.iconData && section.iconKey === 'female',
+            () => updateSection && updateSection({ iconKey: 'female', iconData: null }),
+            'Female'
+          )}
+          <button
+            onClick={() => fileRef.current && fileRef.current.click()}
+            style={{
+              appearance: 'none', cursor: 'pointer',
+              border: '0.5px dashed rgba(255,255,255,0.18)',
+              background: 'transparent', color: accent,
+              padding: '6px 10px', borderRadius: 999,
+              fontFamily: 'Geist Mono, ui-monospace, monospace',
+              fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
+            }}
+          >+ Photo</button>
+          {section.iconData && (
+            <button
+              onClick={() => updateSection && updateSection({ iconData: null, iconKey: section.iconKey || 'user' })}
+              style={{
+                appearance: 'none', cursor: 'pointer',
+                border: '0.5px solid rgba(255,255,255,0.12)',
+                background: 'transparent', color: 'rgba(250,128,114,0.6)',
+                padding: '6px 10px', borderRadius: 999,
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
+              }}
+            >× Clear photo</button>
+          )}
+          <input
+            ref={fileRef} type="file" accept="image/*"
+            style={{ display: 'none' }}
+            onChange={onUploadPhoto}
+          />
+        </div>
+      </div>
+
+      {/* Reminders — open ones bubble up to the Home section until checked off. */}
+      <div>
+        <SectionTitle>Reminders · {(data.reminders || []).filter((r) => !r.done).length} open</SectionTitle>
+        <form onSubmit={addReminder} style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
+          padding: '8px 10px', borderRadius: 10,
+          background: 'rgba(255,255,255,0.06)',
+          border: '0.5px solid rgba(255,255,255,0.12)',
+        }}>
+          <input
+            value={newReminder}
+            onChange={(e) => setNewReminder(e.target.value)}
+            placeholder="Follow up with them about…"
+            style={{
+              flex: 1, background: 'transparent', border: 0, outline: 'none',
+              color: FG_PINK, fontFamily: 'Geist, ui-sans-serif, system-ui',
+              fontSize: 14,
+            }}
+          />
+          {newReminder.trim() && (
+            <button type="submit" style={{
+              appearance: 'none', border: 0, padding: '4px 10px',
+              background: accent, color: '#0B0B0E',
+              fontFamily: 'Geist Mono, ui-monospace, monospace',
+              fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
+              borderRadius: 8, fontWeight: 600, cursor: 'pointer',
+            }}>Add</button>
+          )}
+        </form>
+        {(data.reminders || []).length === 0 && (
+          <div style={{
+            color: 'rgba(250,128,114,0.4)', fontSize: 13, padding: '4px 0',
+          }}>No reminders yet.</div>
+        )}
+        {(data.reminders || []).map((r) => (
+          <div key={r.id} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '10px 0', borderBottom: '0.5px solid rgba(255,255,255,0.08)',
+          }}>
+            <button
+              onClick={() => toggleReminder(r.id)}
+              aria-label={r.done ? 'Mark not done' : 'Mark done'}
+              style={{
+                appearance: 'none', border: 0, background: 'transparent',
+                padding: 0, cursor: 'pointer', flexShrink: 0,
+                width: 18, height: 18, borderRadius: 5,
+                borderStyle: 'solid', borderWidth: '1.5px',
+                borderColor: r.done ? accent : 'rgba(255,255,255,0.3)',
+                backgroundColor: r.done ? accent : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}
+            >
+              {r.done && (
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 5 4 7 8 3" stroke="#0B0B0E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </button>
+            <span style={{
+              flex: 1, fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 14,
+              color: r.done ? 'rgba(250,128,114,0.4)' : FG_PINK,
+              textDecoration: r.done ? 'line-through' : 'none',
+              textDecorationColor: 'rgba(250,128,114,0.4)',
+              textDecorationThickness: '1px',
+            }}>{r.text}</span>
+            <button
+              onClick={() => removeReminder(r.id)}
+              aria-label="Remove reminder"
+              style={{
+                appearance: 'none', border: 0, background: 'transparent',
+                color: 'rgba(250,128,114,0.35)', cursor: 'pointer',
+                padding: 4, fontSize: 16, lineHeight: 1,
+              }}
+            >×</button>
+          </div>
+        ))}
+      </div>
+
       {/* Phones — tap the ↗ to launch the dialer */}
       <div>
         <SectionTitle>Phones</SectionTitle>
@@ -1434,23 +1642,102 @@ function PersonDetails({ section, peopleData, setPeopleData, accent }) {
         />
       </div>
 
-      <div style={{
-        fontFamily: 'Geist Mono, ui-monospace, monospace',
-        fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
-        color: 'rgba(250,128,114,0.35)', textAlign: 'center', paddingTop: 6,
-      }}>
-        Rename or change avatar in Settings (gear)
-      </div>
     </div>
   );
 }
 
 // Home / welcome section. The brief panel and detail headline read
-// "Welcome <first name>" (with the first name accent-colored) — this editor
-// is just for changing that name. Falls back to a placeholder when empty.
-function HomeDetails({ userName, setUserName, accent }) {
+// "Welcome <first name>" (with the first name accent-colored). This editor
+// changes that name and surfaces every open person-reminder across the wheel
+// — they sit at the top until checked off, at which point they drop out of
+// the home feed but stay in the source person's reminders list.
+function HomeDetails({ userName, setUserName, accent, sections, peopleData, setPeopleData }) {
+  // Collect open reminders across every person section so the user sees them
+  // in one place on Home. Each entry remembers which person it came from so
+  // toggling done writes back to the right people-data bucket.
+  const reminders = React.useMemo(() => {
+    const out = [];
+    for (const sec of sections || []) {
+      if ((sec.contentKey || sec.id) !== 'person') continue;
+      const pd = peopleData && peopleData[sec.id];
+      if (!pd || !pd.reminders) continue;
+      for (const r of pd.reminders) {
+        if (!r.done) out.push({ ...r, sectionId: sec.id, person: sec });
+      }
+    }
+    // Newest-added first.
+    return out.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }, [sections, peopleData]);
+
+  const completeReminder = (sectionId, id) => {
+    setPeopleData((prev) => {
+      const cur = prev[sectionId];
+      if (!cur || !cur.reminders) return prev;
+      return {
+        ...prev,
+        [sectionId]: {
+          ...cur,
+          reminders: cur.reminders.map((r) => (r.id === id ? { ...r, done: true } : r)),
+        },
+      };
+    });
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      {reminders.length > 0 && (
+        <div>
+          <SectionTitle>Reminders · {reminders.length} open</SectionTitle>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {reminders.map((r) => (
+              <div key={`${r.sectionId}-${r.id}`} style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '10px 0', borderBottom: '0.5px solid rgba(255,255,255,0.08)',
+              }}>
+                <button
+                  onClick={() => completeReminder(r.sectionId, r.id)}
+                  aria-label="Mark done"
+                  style={{
+                    appearance: 'none', border: 0, background: 'transparent',
+                    padding: 0, cursor: 'pointer', flexShrink: 0,
+                    width: 18, height: 18, borderRadius: 5,
+                    borderStyle: 'solid', borderWidth: '1.5px',
+                    borderColor: 'rgba(255,255,255,0.3)',
+                    backgroundColor: 'transparent',
+                    transition: 'all 0.15s',
+                  }}
+                />
+                {/* Avatar mini-thumb */}
+                <div style={{
+                  width: 22, height: 22, borderRadius: '50%',
+                  overflow: 'hidden', flexShrink: 0,
+                  background: 'rgba(255,255,255,0.06)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: FG_WHITE,
+                }}>
+                  {r.person?.iconData
+                    ? <img src={r.person.iconData} alt="" style={{ width: 22, height: 22, objectFit: 'cover' }} />
+                    : <div style={{ width: 14, height: 14 }}>{Icon[r.person?.iconKey] || Icon.user}</div>}
+                </div>
+                <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{
+                    fontFamily: 'Geist Mono, ui-monospace, monospace',
+                    fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+                    color: 'rgba(250,128,114,0.55)',
+                  }}>
+                    {r.person?.name || 'Person'}
+                  </span>
+                  <span style={{
+                    fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 14,
+                    color: FG_PINK, lineHeight: 1.25,
+                  }}>{r.text}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         <SectionTitle>Your name</SectionTitle>
         <input

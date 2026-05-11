@@ -170,6 +170,13 @@ function App() {
   // Keys are the section id (one entry per "person" section on the wheel).
   const [peopleData, setPeopleData] = usePersistedState('swiped.people', () => ({}));
 
+  // Mutate the currently-selected section (used by PersonDetails so people
+  // can rename + change avatar inline without going to Settings).
+  const updateSelectedSection = (patch) => {
+    const next = sections.map((s, i) => (i === safeIdx ? { ...s, ...patch } : s));
+    setTweak('sections', next);
+  };
+
   // Picking a semester also jumps the weekly view to that semester's default
   // week (first week of Jan/Jun/Aug, or today if the semester is current).
   // User can still navigate freely afterward.
@@ -388,31 +395,27 @@ function App() {
       };
     }
     if (contentKey === 'person') {
-      const pd = peopleData[selected?.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '' };
-      // Days until next occurrence of the birthday (month/day).
-      let bday = '—';
+      const pd = peopleData[selected?.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '', reminders: [] };
+      // Age (years) computed from birthday year — only stat shown for people.
+      let age = null;
       if (pd.birthday) {
         const [y, m, d] = pd.birthday.split('-').map(Number);
-        if (m && d) {
-          const now = new Date(); now.setHours(0, 0, 0, 0);
-          let next = new Date(now.getFullYear(), m - 1, d);
-          if (next < now) next = new Date(now.getFullYear() + 1, m - 1, d);
-          const days = Math.round((next - now) / 86400000);
-          bday = days === 0 ? 'Today' : `${days}d`;
+        if (y && m && d) {
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          age = today.getFullYear() - y;
+          const before = (today.getMonth() + 1 < m) || (today.getMonth() + 1 === m && today.getDate() < d);
+          if (before) age--;
         }
       }
-      const fullName = selected?.name || baseContent.headline;
+      const open = (pd.reminders || []).filter((r) => !r.done).length;
       return {
         ...baseContent,
-        headline: fullName,
-        brief: pd.birthday || pd.phones?.length || pd.emails?.length
-          ? `${pd.phones?.length || 0} phones · ${pd.emails?.length || 0} emails`
-          : 'Add their details',
-        stats: [
-          { label: 'Phones', value: String(pd.phones?.length || 0) },
-          { label: 'Emails', value: String(pd.emails?.length || 0) },
-          { label: 'Birthday', value: bday },
-        ],
+        headline: selected?.name || baseContent.headline,
+        brief: open
+          ? `${open} reminder${open === 1 ? '' : 's'}`
+          : (age != null ? `${age} years old` : 'Add their details'),
+        // Drop the phone/email counters — keep only Age when birthday is set.
+        stats: age != null ? [{ label: 'Age', value: String(age) }] : [],
       };
     }
     return baseContent;
@@ -605,6 +608,8 @@ function App() {
               setPeopleData={setPeopleData}
               userName={t.userName}
               setUserName={(v) => setTweak('userName', v)}
+              sections={sections}
+              updateSection={updateSelectedSection}
             />
           </div>
         </div>
@@ -728,24 +733,27 @@ function BriefPanel({ section, content, accent, tf, pulseKey }) {
         {content.brief}
       </div>
 
-      {/* mini stat strip */}
-      <div style={{ display: 'flex', gap: 18, marginTop: 16 }}>
-        {content.stats.slice(0, 3).map((s, i) => (
-          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-            <div style={{
-              fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.14em',
-              textTransform: 'uppercase', color: 'rgba(11,11,14,0.4)',
-              whiteSpace: 'nowrap',
-            }}>{s.label}</div>
-            <div style={{
-              fontFamily: tf.family, fontSize: 16, fontWeight: 500,
-              letterSpacing: '-0.01em', color: '#0B0B0E',
-              fontVariantNumeric: 'tabular-nums',
-              whiteSpace: 'nowrap',
-            }}>{s.value}</div>
-          </div>
-        ))}
-      </div>
+      {/* mini stat strip — skipped entirely when stats is empty (e.g. a
+          person with no birthday set has nothing to surface here yet). */}
+      {content.stats && content.stats.length > 0 && (
+        <div style={{ display: 'flex', gap: 18, marginTop: 16 }}>
+          {content.stats.slice(0, 3).map((s, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+              <div style={{
+                fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.14em',
+                textTransform: 'uppercase', color: 'rgba(11,11,14,0.4)',
+                whiteSpace: 'nowrap',
+              }}>{s.label}</div>
+              <div style={{
+                fontFamily: tf.family, fontSize: 16, fontWeight: 500,
+                letterSpacing: '-0.01em', color: '#0B0B0E',
+                fontVariantNumeric: 'tabular-nums',
+                whiteSpace: 'nowrap',
+              }}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
