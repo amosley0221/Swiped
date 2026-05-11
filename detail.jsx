@@ -1269,10 +1269,26 @@ function socialUrl(platform, handle) {
 
 function openLink(href) {
   if (!href || typeof window === 'undefined') return;
-  // On mobile, tel: and mailto: hand off to the dialer / mail client. Web
-  // links open in a new tab; iOS Safari may then deep-link into installed
-  // apps (e.g. Instagram, YouTube) when their universal-link is registered.
-  window.open(href, '_blank', 'noopener,noreferrer');
+  // In standalone-PWA mode, window.open('_blank') spawns an empty in-app
+  // browser overlay that lingers after the OS hands the URL off to a
+  // native app (the universal-link case for Instagram, Twitch, YouTube,
+  // etc., or tel: / mailto: routing to the dialer / mail client). Using
+  // location.href instead lets the OS take over without leaving an empty
+  // overlay behind: iOS / Android both treat cross-origin navigation in
+  // standalone mode as "open in the system browser" — which is exactly
+  // what triggers the universal-link handoff — without actually navigating
+  // the PWA away from Swiped.
+  //
+  // In a regular browser tab we still want target=_blank behavior so the
+  // user doesn't lose their place in Swiped.
+  const isStandalone =
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    || window.navigator.standalone === true;
+  if (isStandalone) {
+    window.location.href = href;
+  } else {
+    window.open(href, '_blank', 'noopener,noreferrer');
+  }
 }
 
 // Shared contact-card block. Renders phones / emails / birthday / socials /
