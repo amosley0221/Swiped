@@ -15,28 +15,25 @@ function sheetPath({ progress, finger, W, H }) {
   // sheet approaches fully open, so the curve flattens out near the end.
   const lagAmount = (1 - progress) * H * 0.55;
   const lagY = Math.min(H + 20, fy + lagAmount);
-  // Bump width widens with progress so the curve broadens as the sheet opens.
-  const sigma = W * (0.22 + 0.5 * progress);
-  const twoSigmaSq = 2 * sigma * sigma;
+  // Bell half-width: tight at low progress so the sheet starts as a small
+  // bump under the finger, widening as it opens until the curve is flat.
+  const halfWidth = W * (0.22 + 0.7 * progress);
+  // Control-point distance — tunes how rounded the bell is. ~0.55 gives a
+  // soft, smooth bell that's neither pointy nor too plateaued.
+  const cp = halfWidth * 0.55;
+  const leftAnchor = fx - halfWidth;
+  const rightAnchor = fx + halfWidth;
 
-  const N = 28;
-  const pts = new Array(N + 1);
-  for (let i = 0; i <= N; i++) {
-    const x = (i / N) * W;
-    const dx = x - fx;
-    const decay = 1 - Math.exp(-(dx * dx) / twoSigmaSq);
-    pts[i] = [x, fy + decay * (lagY - fy)];
-  }
-
-  // Smooth path: cubic between sample points with mid-x control handles.
-  let d = `M 0 ${H + 20} L 0 ${pts[0][1]}`;
-  for (let i = 1; i <= N; i++) {
-    const [x0, y0] = pts[i - 1];
-    const [x1, y1] = pts[i];
-    const cx = (x0 + x1) / 2;
-    d += ` C ${cx} ${y0}, ${cx} ${y1}, ${x1} ${y1}`;
-  }
-  d += ` L ${W} ${H + 20} Z`;
+  // Two cubics meeting at (fx, fy) with horizontal tangents on both sides —
+  // C1-continuous at the peak and at the anchors. No sampling, no scallops.
+  const r = (n) => n.toFixed(1);
+  let d = `M 0 ${r(H + 20)}`;
+  d += ` L 0 ${r(lagY)}`;
+  d += ` L ${r(leftAnchor)} ${r(lagY)}`;
+  d += ` C ${r(leftAnchor + cp)} ${r(lagY)}, ${r(fx - cp)} ${r(fy)}, ${r(fx)} ${r(fy)}`;
+  d += ` C ${r(fx + cp)} ${r(fy)}, ${r(rightAnchor - cp)} ${r(lagY)}, ${r(rightAnchor)} ${r(lagY)}`;
+  d += ` L ${r(W)} ${r(lagY)}`;
+  d += ` L ${r(W)} ${r(H + 20)} Z`;
   return d;
 }
 
