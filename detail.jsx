@@ -287,7 +287,6 @@ function DetailView({
             section={section}
             peopleData={peopleData}
             setPeopleData={setPeopleData}
-            updateSection={updateSection}
             accent={accent}
           />
         ) : isSchool ? (
@@ -1237,27 +1236,17 @@ function openLink(href) {
   window.open(href, '_blank', 'noopener,noreferrer');
 }
 
-function PersonDetails({ section, peopleData, setPeopleData, updateSection, accent }) {
+function PersonDetails({ section, peopleData, setPeopleData, accent }) {
   const data = peopleData[section.id] || {
     phones: [], emails: [], socials: [], birthday: '', notes: '', reminders: [],
   };
   const [newReminder, setNewReminder] = React.useState('');
-  const fileRef = React.useRef(null);
 
   const patch = (updater) => {
     setPeopleData((prev) => {
       const cur = prev[section.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '', reminders: [] };
       return { ...prev, [section.id]: updater(cur) };
     });
-  };
-
-  const onUploadPhoto = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => updateSection && updateSection({ iconData: r.result, iconKey: null });
-    r.readAsDataURL(f);
-    e.target.value = '';
   };
 
   const addReminder = (e) => {
@@ -1321,98 +1310,8 @@ function PersonDetails({ section, peopleData, setPeopleData, updateSection, acce
   const updateRow = (key, id, p) => patch((c) => ({ ...c, [key]: (c[key] || []).map((r) => (r.id === id ? { ...r, ...p } : r)) }));
   const removeRow = (key, id) => patch((c) => ({ ...c, [key]: (c[key] || []).filter((r) => r.id !== id) }));
 
-  const avatarChip = (active, onClick, label) => (
-    <button
-      onClick={onClick}
-      style={{
-        appearance: 'none', cursor: 'pointer',
-        border: `0.5px ${active ? 'solid' : 'dashed'} ${active ? accent : 'rgba(255,255,255,0.18)'}`,
-        background: active ? 'rgba(79,168,98,0.12)' : 'transparent',
-        color: active ? accent : 'rgba(250,128,114,0.7)',
-        padding: '6px 10px', borderRadius: 999,
-        fontFamily: 'Geist Mono, ui-monospace, monospace',
-        fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
-      }}
-    >{label}</button>
-  );
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-      {/* Identity — avatar + full name + avatar picker. Persists changes
-          straight into the section list (so the wheel updates in real-time)
-          via the updateSection callback from app.jsx. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 56, height: 56, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.05)',
-            border: '0.5px solid rgba(255,255,255,0.12)',
-            overflow: 'hidden', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: FG_WHITE,
-          }}>
-            {section.iconData
-              ? <img src={section.iconData} alt="" style={{ width: 56, height: 56, objectFit: 'cover' }} />
-              : <div style={{ width: 32, height: 32 }}>{Icon[section.iconKey] || Icon.user}</div>}
-          </div>
-          <input
-            value={section.name || ''}
-            onChange={(e) => updateSection && updateSection({ name: e.target.value })}
-            placeholder="Full name"
-            autoCapitalize="words"
-            style={{
-              flex: 1, minWidth: 0,
-              background: 'transparent', border: 0,
-              borderBottom: '0.5px solid rgba(255,255,255,0.15)',
-              color: FG_PINK, outline: 'none',
-              fontFamily: '"Instrument Serif", Georgia, serif',
-              fontStyle: 'italic', fontSize: 22, padding: '4px 0',
-            }}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {avatarChip(
-            !section.iconData && section.iconKey === 'male',
-            () => updateSection && updateSection({ iconKey: 'male', iconData: null }),
-            'Male'
-          )}
-          {avatarChip(
-            !section.iconData && section.iconKey === 'female',
-            () => updateSection && updateSection({ iconKey: 'female', iconData: null }),
-            'Female'
-          )}
-          <button
-            onClick={() => fileRef.current && fileRef.current.click()}
-            style={{
-              appearance: 'none', cursor: 'pointer',
-              border: '0.5px dashed rgba(255,255,255,0.18)',
-              background: 'transparent', color: accent,
-              padding: '6px 10px', borderRadius: 999,
-              fontFamily: 'Geist Mono, ui-monospace, monospace',
-              fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
-            }}
-          >+ Photo</button>
-          {section.iconData && (
-            <button
-              onClick={() => updateSection && updateSection({ iconData: null, iconKey: section.iconKey || 'user' })}
-              style={{
-                appearance: 'none', cursor: 'pointer',
-                border: '0.5px solid rgba(255,255,255,0.12)',
-                background: 'transparent', color: 'rgba(250,128,114,0.6)',
-                padding: '6px 10px', borderRadius: 999,
-                fontFamily: 'Geist Mono, ui-monospace, monospace',
-                fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
-              }}
-            >× Clear photo</button>
-          )}
-          <input
-            ref={fileRef} type="file" accept="image/*"
-            style={{ display: 'none' }}
-            onChange={onUploadPhoto}
-          />
-        </div>
-      </div>
-
       {/* Reminders — open ones bubble up to the Home section until checked off. */}
       <div>
         <SectionTitle>Reminders · {(data.reminders || []).filter((r) => !r.done).length} open</SectionTitle>
