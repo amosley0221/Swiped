@@ -14,11 +14,13 @@ function DetailView({
   userName, setUserName,
   sections, updateSection,
   homeData, setHomeData,
+  budgetData, setBudgetData,
 }) {
   const isSchool = (section.contentKey || section.id) === 'school';
   const isWork = (section.contentKey || section.id) === 'work';
   const isPerson = (section.contentKey || section.id) === 'person';
   const isHome = (section.contentKey || section.id) === 'home';
+  const isBudget = (section.contentKey || section.id) === 'budget';
   // Both work and school run the weekly view (calendar + per-week
   // tasks/log/note + horizontal swipe between weeks).
   const isWeekly = isSchool || isWork;
@@ -187,7 +189,7 @@ function DetailView({
           fontSize: 10.5, letterSpacing: '0.18em', textTransform: 'uppercase',
           color: 'rgba(250,128,114,0.5)',
         }}>
-          {isPerson ? 'Person' : isHome ? 'Home' : section.name}
+          {isPerson ? 'Person' : isHome ? 'Home' : isBudget ? 'Budget' : section.name}
         </div>
         <div style={{ width: 34 }} />
       </div>
@@ -214,8 +216,8 @@ function DetailView({
         </div>
       </div>
 
-      {/* Quick-add — hidden for person and home sections, which have their own editors */}
-      {!isPerson && !isHome && (
+      {/* Quick-add — hidden for person, home, and budget sections, which have their own editors */}
+      {!isPerson && !isHome && !isBudget && (
         <form onSubmit={onSubmit} style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '10px 12px', borderRadius: 14,
@@ -307,6 +309,12 @@ function DetailView({
             setPeopleData={setPeopleData}
             homeData={homeData}
             setHomeData={setHomeData}
+          />
+        ) : isBudget ? (
+          <BudgetDetails
+            data={budgetData}
+            setData={setBudgetData}
+            accent={accent}
           />
         ) : isPerson ? (
           <PersonDetails
@@ -1732,6 +1740,220 @@ function HomeDetails({
           yours. Phones, emails, birthday, socials, and notes all tap-through
           to the appropriate app via the ↗ buttons. */}
       <ContactCard data={safeHome} patch={homePatch} accent={accent} />
+    </div>
+  );
+}
+
+// Budget section — three spreadsheet-style tables (accounts, monthly
+// income, upcoming bills) plus a free-form notes field. All numbers in the
+// brief panel + stats grid (Balance / Income / Due ≤7d) are derived from
+// this data in app.jsx, so editing here updates the wheel immediately.
+function BudgetDetails({ data, setData, accent }) {
+  const safe = data || { accounts: [], income: [], bills: [], notes: '' };
+
+  const patch = React.useCallback((updater) => {
+    setData((prev) => updater(prev || { accounts: [], income: [], bills: [], notes: '' }));
+  }, [setData]);
+
+  const addRow = (key, seed) => patch((c) => ({ ...c, [key]: [...(c[key] || []), { id: Date.now() + Math.random(), ...seed }] }));
+  const updateRow = (key, id, p) => patch((c) => ({ ...c, [key]: (c[key] || []).map((r) => (r.id === id ? { ...r, ...p } : r)) }));
+  const removeRow = (key, id) => patch((c) => ({ ...c, [key]: (c[key] || []).filter((r) => r.id !== id) }));
+
+  const fmt = (n) => {
+    const v = Number(n) || 0;
+    return v.toLocaleString('en-US', {
+      style: 'currency', currency: 'USD',
+      maximumFractionDigits: v < 1000 ? 2 : 0,
+    });
+  };
+
+  const totalBalance = safe.accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
+  const monthlyIncome = safe.income.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const billsTotal = safe.bills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+
+  const baseField = {
+    background: 'rgba(255,255,255,0.06)',
+    border: '0.5px solid rgba(255,255,255,0.12)',
+    color: FG_PINK,
+    borderRadius: 8,
+    padding: '8px 10px',
+    outline: 'none',
+    fontFamily: 'Geist, ui-sans-serif, system-ui',
+    fontSize: 14,
+    boxSizing: 'border-box',
+    minWidth: 0,
+  };
+  const moneyField = {
+    ...baseField,
+    fontFamily: 'Geist Mono, ui-monospace, monospace',
+    fontVariantNumeric: 'tabular-nums',
+    textAlign: 'right',
+  };
+  const colHeadStyle = {
+    fontFamily: 'Geist Mono, ui-monospace, monospace',
+    fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+    color: 'rgba(250,128,114,0.45)',
+    paddingBottom: 4,
+  };
+  const xBtn = {
+    appearance: 'none', border: 0, background: 'transparent',
+    color: 'rgba(250,128,114,0.4)', cursor: 'pointer',
+    padding: 4, fontSize: 16, lineHeight: 1, flexShrink: 0,
+  };
+  const addBtn = {
+    appearance: 'none', border: 0, background: 'transparent',
+    color: accent, cursor: 'pointer', padding: '6px 0', marginTop: 4,
+    fontFamily: 'Geist Mono, ui-monospace, monospace',
+    fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+    fontWeight: 600,
+  };
+  const sumStyle = {
+    fontFamily: 'Geist Mono, ui-monospace, monospace',
+    fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
+    color: 'rgba(250,128,114,0.55)',
+  };
+
+  // Sort bills by due date ascending; ones without a date drift to the bottom.
+  const sortedBills = safe.bills.slice().sort((a, b) => {
+    if (!a.dueDate && !b.dueDate) return 0;
+    if (!a.dueDate) return 1;
+    if (!b.dueDate) return -1;
+    return a.dueDate.localeCompare(b.dueDate);
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      {/* Accounts — bank / brokerage / wallet, anything that holds money. */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <SectionTitle>Accounts · {safe.accounts.length}</SectionTitle>
+          <span style={sumStyle}>
+            Total&nbsp;<span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalBalance)}</span>
+          </span>
+        </div>
+        {safe.accounts.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 28px', gap: 8 }}>
+            <div style={colHeadStyle}>Name</div>
+            <div style={{ ...colHeadStyle, textAlign: 'right' }}>Balance</div>
+            <div />
+          </div>
+        )}
+        {safe.accounts.map((a) => (
+          <div key={a.id} style={{
+            display: 'grid', gridTemplateColumns: '1fr 130px 28px',
+            gap: 8, marginBottom: 8, alignItems: 'center',
+          }}>
+            <input
+              value={a.name} placeholder="Checking"
+              onChange={(e) => updateRow('accounts', a.id, { name: e.target.value })}
+              style={baseField}
+            />
+            <input
+              type="number" inputMode="decimal" step="0.01"
+              value={a.balance ?? ''} placeholder="0.00"
+              onChange={(e) => updateRow('accounts', a.id, { balance: e.target.value })}
+              style={moneyField}
+            />
+            <button onClick={() => removeRow('accounts', a.id)} aria-label="Remove" style={xBtn}>×</button>
+          </div>
+        ))}
+        <button onClick={() => addRow('accounts', { name: '', balance: '' })} style={addBtn}>
+          + Add account
+        </button>
+      </div>
+
+      {/* Monthly income — every entry is treated as a monthly amount. */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <SectionTitle>Monthly income</SectionTitle>
+          <span style={sumStyle}>
+            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(monthlyIncome)}</span>&nbsp;/ mo
+          </span>
+        </div>
+        {safe.income.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 28px', gap: 8 }}>
+            <div style={colHeadStyle}>Source</div>
+            <div style={{ ...colHeadStyle, textAlign: 'right' }}>Amount</div>
+            <div />
+          </div>
+        )}
+        {safe.income.map((i) => (
+          <div key={i.id} style={{
+            display: 'grid', gridTemplateColumns: '1fr 130px 28px',
+            gap: 8, marginBottom: 8, alignItems: 'center',
+          }}>
+            <input
+              value={i.source} placeholder="Salary"
+              onChange={(e) => updateRow('income', i.id, { source: e.target.value })}
+              style={baseField}
+            />
+            <input
+              type="number" inputMode="decimal" step="0.01"
+              value={i.amount ?? ''} placeholder="0.00"
+              onChange={(e) => updateRow('income', i.id, { amount: e.target.value })}
+              style={moneyField}
+            />
+            <button onClick={() => removeRow('income', i.id)} aria-label="Remove" style={xBtn}>×</button>
+          </div>
+        ))}
+        <button onClick={() => addRow('income', { source: '', amount: '' })} style={addBtn}>
+          + Add income
+        </button>
+      </div>
+
+      {/* Upcoming bills — sorted by due date so the next bill bubbles up. */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <SectionTitle>Upcoming bills</SectionTitle>
+          <span style={sumStyle}>
+            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(billsTotal)}</span>&nbsp;total
+          </span>
+        </div>
+        {sortedBills.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 140px 28px', gap: 8 }}>
+            <div style={colHeadStyle}>Name</div>
+            <div style={{ ...colHeadStyle, textAlign: 'right' }}>Amount</div>
+            <div style={colHeadStyle}>Due</div>
+            <div />
+          </div>
+        )}
+        {sortedBills.map((b) => (
+          <div key={b.id} style={{
+            display: 'grid', gridTemplateColumns: '1fr 110px 140px 28px',
+            gap: 8, marginBottom: 8, alignItems: 'center',
+          }}>
+            <input
+              value={b.name} placeholder="Rent"
+              onChange={(e) => updateRow('bills', b.id, { name: e.target.value })}
+              style={baseField}
+            />
+            <input
+              type="number" inputMode="decimal" step="0.01"
+              value={b.amount ?? ''} placeholder="0.00"
+              onChange={(e) => updateRow('bills', b.id, { amount: e.target.value })}
+              style={moneyField}
+            />
+            <input
+              type="date" value={b.dueDate || ''}
+              onChange={(e) => updateRow('bills', b.id, { dueDate: e.target.value })}
+              style={{ ...baseField, colorScheme: 'dark' }}
+            />
+            <button onClick={() => removeRow('bills', b.id)} aria-label="Remove" style={xBtn}>×</button>
+          </div>
+        ))}
+        <button onClick={() => addRow('bills', { name: '', amount: '', dueDate: '' })} style={addBtn}>
+          + Add bill
+        </button>
+      </div>
+
+      {/* Notes */}
+      <div>
+        <SectionTitle>Notes</SectionTitle>
+        <NoteField
+          value={safe.notes || ''}
+          onChange={(v) => patch((c) => ({ ...c, notes: v }))}
+        />
+      </div>
     </div>
   );
 }

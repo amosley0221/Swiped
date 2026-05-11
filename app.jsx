@@ -209,6 +209,13 @@ function App() {
     phones: [], emails: [], socials: [], birthday: '', notes: '',
   }));
 
+  // Budget section — bank accounts, monthly income sources, and upcoming
+  // bills. Entirely user-entered; brief panel + detail stats are derived
+  // from this object (no hardcoded numbers anymore).
+  const [budgetData, setBudgetData] = usePersistedState('swiped.budget', () => ({
+    accounts: [], income: [], bills: [], notes: '',
+  }));
+
   // Mutate the currently-selected section (used by PersonDetails so people
   // can rename + change avatar inline without going to Settings).
   const updateSelectedSection = (patch) => {
@@ -248,6 +255,7 @@ function App() {
       localStorage.removeItem('swiped.weeklyActive');
       localStorage.removeItem('swiped.people');
       localStorage.removeItem('swiped.home');
+      localStorage.removeItem('swiped.budget');
     } catch (e) { /* ignore */ }
     const seedSemesters = SECTION_LIB.school.semesters;
     const seedSem = seedSemesters[0];
@@ -267,6 +275,7 @@ function App() {
     setWeeklyActiveKey({ school: seedKey });
     setPeopleData({});
     setHomeData({ phones: [], emails: [], socials: [], birthday: '', notes: '' });
+    setBudgetData({ accounts: [], income: [], bills: [], notes: '' });
   };
 
   // Sheet gesture state. `finger` is the live (or last) pointer position;
@@ -418,6 +427,35 @@ function App() {
         semesters: schoolSemesters,
       };
     }
+    if (contentKey === 'budget') {
+      const bd = budgetData || { accounts: [], income: [], bills: [] };
+      const totalBalance = (bd.accounts || []).reduce((s, a) => s + (Number(a.balance) || 0), 0);
+      const monthlyIncome = (bd.income || []).reduce((s, i) => s + (Number(i.amount) || 0), 0);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const sevenOut = new Date(today); sevenOut.setDate(today.getDate() + 7);
+      const due7d = (bd.bills || []).reduce((s, b) => {
+        if (!b.dueDate) return s;
+        const d = new Date(b.dueDate);
+        if (isNaN(+d)) return s;
+        if (d >= today && d <= sevenOut) return s + (Number(b.amount) || 0);
+        return s;
+      }, 0);
+      const fmt = (n) => n === 0 ? '$0'
+        : n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: n < 1000 ? 2 : 0 });
+      const accountCount = (bd.accounts || []).length;
+      return {
+        ...baseContent,
+        headline: 'This month',
+        brief: accountCount === 0
+          ? 'Add an account to start'
+          : `${fmt(totalBalance)} across ${accountCount} account${accountCount === 1 ? '' : 's'}`,
+        stats: [
+          { label: 'Balance', value: fmt(totalBalance) },
+          { label: 'Income', value: monthlyIncome > 0 ? `${fmt(monthlyIncome)}/mo` : '—' },
+          { label: 'Due ≤7d', value: due7d > 0 ? fmt(due7d) : '—' },
+        ],
+      };
+    }
     if (contentKey === 'home') {
       const firstName = (t.userName || '').trim().split(/\s+/)[0] || '';
       const sectionCount = sections.length;
@@ -467,7 +505,7 @@ function App() {
       };
     }
     return baseContent;
-  }, [contentKey, baseContent, schoolSemesters, peopleData, selected, t.userName, t.accent, sections.length]);
+  }, [contentKey, baseContent, schoolSemesters, peopleData, selected, t.userName, t.accent, sections.length, budgetData]);
 
   // For the wheel's icon lookup, ensure each section has a valid iconKey
   const wheelSections = sections.map((s) => ({
@@ -660,6 +698,8 @@ function App() {
               updateSection={updateSelectedSection}
               homeData={homeData}
               setHomeData={setHomeData}
+              budgetData={budgetData}
+              setBudgetData={setBudgetData}
             />
           </div>
         </div>
