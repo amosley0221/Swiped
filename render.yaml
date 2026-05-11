@@ -8,9 +8,22 @@ services:
       - path: /manifest.json
         name: Content-Type
         value: application/manifest+json
+      # Babel-standalone compiles JSX in the browser, so the JSX files are
+      # effectively the app source. Same for the HTML shells. Tell the
+      # browser and any CDN never to serve cached copies so a fresh deploy
+      # always reaches the user immediately.
       - path: /*.jsx
         name: Content-Type
         value: text/babel
+      - path: /*.jsx
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
+      - path: /*.html
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
+      - path: /
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
     routes:
       - type: rewrite
         source: /canvas
