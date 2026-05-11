@@ -523,6 +523,17 @@ function SyncSection({ tf, accent }) {
                 opacity: busy ? 0.5 : 1,
               }}
             >Sign out</button>
+            {status === 'error' && error && (
+              <div style={{
+                fontFamily: tf.mono, fontSize: 11, letterSpacing: '0.04em',
+                color: '#A03030', lineHeight: 1.4,
+                background: 'rgba(160,48,48,0.08)',
+                border: '0.5px solid rgba(160,48,48,0.25)',
+                borderRadius: 8, padding: '8px 10px',
+              }}>
+                Sync error: {error.message || String(error)}
+              </div>
+            )}
           </>
         ) : (
           <>

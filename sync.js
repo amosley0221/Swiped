@@ -169,10 +169,16 @@
         applyRemoteData(data);
       })
       .subscribe((s) => {
-        // 'SUBSCRIBED' once the channel is live; anything else is in-flight.
+        // 'SUBSCRIBED' once the channel is live; the row is now being
+        // watched. Drop back to idle so the UI dot reads green instead of
+        // staying amber forever.
         if (s === 'SUBSCRIBED') {
           lastSyncedAt = Date.now();
-          status = 'syncing';
+          status = 'idle';
+          emitStatus();
+        } else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') {
+          lastError = new Error(`Realtime channel ${s.toLowerCase()}`);
+          status = 'error';
           emitStatus();
         }
       });
@@ -246,6 +252,8 @@
     for (const f of fields) merged[f] = pendingWrite[f];
     for (const f of fields) delete pendingWrite[f];
 
+    status = 'syncing';
+    emitStatus();
     try {
       const { error } = await client
         .from('user_data')
@@ -260,7 +268,9 @@
         status = 'error';
         emitStatus();
       } else {
+        lastError = null;
         lastSyncedAt = Date.now();
+        status = 'idle';
         emitStatus();
       }
     } catch (e) {
