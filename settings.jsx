@@ -97,6 +97,10 @@ function SettingsSheet({ open, sections, onChange, onClose, accent, tf, onResetS
 
         {/* scroll */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 24px' }}>
+          {/* sync — Google sign-in or email magic link. Survives across
+              devices via Firestore (see sync.js). */}
+          <SyncSection tf={tf} accent={accent} />
+
           {/* user name — used for Home's "Welcome <first name>" headline */}
           {onUserName && (
             <div style={{ marginBottom: 22 }}>
@@ -397,6 +401,204 @@ function IconBtn({ onClick, label, children }) {
     }}>
       <svg width="11" height="11" viewBox="0 0 10 10">{children}</svg>
     </button>
+  );
+}
+
+// Reads the latest auth state from window.SwipedSync (set by sync.js) and
+// subscribes to `swiped-auth-change` events so the UI re-renders on sign-
+// in / sign-out and after each successful Firestore sync.
+function useAuthState() {
+  const [state, setState] = React.useState(() => {
+    const s = (typeof window !== 'undefined' && window.SwipedSync) || null;
+    return {
+      user: s ? s.user : null,
+      status: s ? s.status : 'idle',
+      lastSyncedAt: s ? s.lastSyncedAt : null,
+      error: null,
+    };
+  });
+  React.useEffect(() => {
+    const onChange = (e) => {
+      const detail = (e && e.detail) || {};
+      setState({
+        user: detail.user || null,
+        status: detail.status || 'idle',
+        lastSyncedAt: detail.lastSyncedAt || null,
+        error: detail.error || null,
+      });
+    };
+    window.addEventListener('swiped-auth-change', onChange);
+    return () => window.removeEventListener('swiped-auth-change', onChange);
+  }, []);
+  return state;
+}
+
+function SyncSection({ tf, accent }) {
+  const sync = (typeof window !== 'undefined' && window.SwipedSync) || null;
+  const { user, status, lastSyncedAt, error } = useAuthState();
+  const [email, setEmail] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+
+  if (!sync) {
+    // Firebase SDK didn't load or sync.js failed to init. Hide section to
+    // avoid offering a feature that won't work.
+    return null;
+  }
+
+  const syncedLabel = lastSyncedAt
+    ? new Date(lastSyncedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : null;
+
+  const onGoogle = () => {
+    setBusy(true);
+    sync.signInGoogle().catch(() => setBusy(false));
+  };
+  const onMagicLink = (e) => {
+    e?.preventDefault?.();
+    if (!email.trim()) return;
+    setBusy(true);
+    sync.sendMagicLink(email.trim())
+      .then(() => { setEmail(''); })
+      .catch(() => {})
+      .finally(() => setBusy(false));
+  };
+  const onSignOut = () => {
+    setBusy(true);
+    sync.signOut().finally(() => setBusy(false));
+  };
+
+  return (
+    <div style={{ marginBottom: 22 }}>
+      <Label tf={tf}>Cross-device sync</Label>
+      <div style={{
+        background: '#fff',
+        border: '0.5px solid rgba(11,11,14,0.1)',
+        borderRadius: 14, padding: '14px 16px',
+        display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        {user ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{
+                  fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.14em',
+                  textTransform: 'uppercase', color: 'rgba(11,11,14,0.45)',
+                  marginBottom: 2,
+                }}>Signed in as</div>
+                <div style={{
+                  fontFamily: tf.family, fontSize: 14, color: '#0B0B0E',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{user.email || user.displayName || 'Anonymous'}</div>
+              </div>
+              <div style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: status === 'error' ? '#FA8072'
+                  : (status === 'syncing' || status === 'signing-in') ? '#E8C547'
+                  : accent,
+                flexShrink: 0, alignSelf: 'center',
+              }} title={status} />
+            </div>
+            <div style={{
+              fontFamily: tf.mono, fontSize: 10, letterSpacing: '0.12em',
+              textTransform: 'uppercase', color: 'rgba(11,11,14,0.5)',
+            }}>
+              {syncedLabel ? `Last synced at ${syncedLabel}` : 'Connecting…'}
+            </div>
+            <button
+              onClick={onSignOut}
+              disabled={busy}
+              style={{
+                appearance: 'none', cursor: busy ? 'default' : 'pointer',
+                border: '0.5px solid rgba(11,11,14,0.18)',
+                background: 'transparent', color: '#0B0B0E',
+                padding: '10px 14px', borderRadius: 10,
+                fontFamily: tf.mono, fontSize: 10, letterSpacing: '0.14em',
+                textTransform: 'uppercase', fontWeight: 600,
+                opacity: busy ? 0.5 : 1,
+              }}
+            >Sign out</button>
+          </>
+        ) : (
+          <>
+            <div style={{
+              fontFamily: tf.family, fontSize: 13.5, color: '#0B0B0E',
+              lineHeight: 1.4,
+            }}>
+              Sign in to keep semesters, classes, weekly tasks, contacts and budgets in sync across your devices.
+            </div>
+            <button
+              onClick={onGoogle}
+              disabled={busy}
+              style={{
+                appearance: 'none', cursor: busy ? 'default' : 'pointer',
+                border: '0.5px solid rgba(11,11,14,0.18)',
+                background: '#0B0B0E', color: '#FAFAF7',
+                padding: '11px 14px', borderRadius: 10,
+                fontFamily: tf.family, fontSize: 14, fontWeight: 500,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                opacity: busy ? 0.5 : 1,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
+                <path fill="#FFFFFF" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.8 2.71v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z"/>
+                <path fill="#FFFFFF" d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.95v2.33A9 9 0 0 0 9 18Z"/>
+                <path fill="#FFFFFF" d="M3.97 10.71A5.41 5.41 0 0 1 3.68 9c0-.6.1-1.18.29-1.71V4.96H.95A9 9 0 0 0 0 9c0 1.45.35 2.83.95 4.04l3.02-2.33Z"/>
+                <path fill="#FFFFFF" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 9 0 9 9 0 0 0 .95 4.96L3.97 7.29C4.68 5.16 6.66 3.58 9 3.58Z"/>
+              </svg>
+              Continue with Google
+            </button>
+            <div style={{
+              fontFamily: tf.mono, fontSize: 9.5, letterSpacing: '0.16em',
+              textTransform: 'uppercase', color: 'rgba(11,11,14,0.4)',
+              textAlign: 'center', padding: '4px 0',
+            }}>or</div>
+            <form onSubmit={onMagicLink} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <input
+                type="email" inputMode="email" autoCapitalize="off" autoCorrect="off"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                style={{
+                  appearance: 'none', boxSizing: 'border-box', width: '100%',
+                  border: '0.5px solid rgba(11,11,14,0.18)',
+                  background: '#fff', borderRadius: 10,
+                  padding: '10px 12px', outline: 'none',
+                  fontFamily: tf.family, fontSize: 14, color: '#0B0B0E',
+                }}
+              />
+              <button
+                type="submit"
+                disabled={!email.trim() || busy}
+                style={{
+                  appearance: 'none', cursor: (email.trim() && !busy) ? 'pointer' : 'default',
+                  border: 0, background: accent, color: '#0B0B0E',
+                  padding: '10px 14px', borderRadius: 10,
+                  fontFamily: tf.mono, fontSize: 10, letterSpacing: '0.14em',
+                  textTransform: 'uppercase', fontWeight: 600,
+                  opacity: (email.trim() && !busy) ? 1 : 0.5,
+                }}
+              >Send sign-in link</button>
+            </form>
+            {status === 'sent-email' && (
+              <div style={{
+                fontFamily: tf.family, fontSize: 12.5, color: 'rgba(11,11,14,0.6)',
+                fontStyle: 'italic',
+              }}>
+                Link sent — check your inbox and open the link on this device to finish signing in.
+              </div>
+            )}
+            {status === 'error' && error && (
+              <div style={{
+                fontFamily: tf.mono, fontSize: 11, letterSpacing: '0.06em',
+                color: '#A03030',
+              }}>
+                {error.message || 'Sign-in failed. Try again.'}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

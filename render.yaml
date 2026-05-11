@@ -32,6 +32,11 @@ services:
       - path: /sw.js
         name: Service-Worker-Allowed
         value: /
+      # Sync layer; pin the Firebase config + auth/Firestore logic to the
+      # latest deploy so changes ship without a stale copy lingering.
+      - path: /sync.js
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
     routes:
       - type: rewrite
         source: /canvas

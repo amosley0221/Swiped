@@ -160,7 +160,11 @@ const __TWEAKS_STYLE = `
 // Single source of truth for tweak values. setTweak persists via:
 //   1. localStorage (so changes survive the user closing the PWA / browser
 //      / surviving redeploys, since the storage is tied to the origin).
-//   2. The Claude Design host (__edit_mode_set_keys), which rewrites the
+//   2. A `swiped-state-set` window event, which the cross-device sync layer
+//      (sync.js) picks up and mirrors to Firestore when the user is signed
+//      in. Listens for the inverse `swiped-state-external` event so changes
+//      pushed down from Firestore refresh React state automatically.
+//   3. The Claude Design host (__edit_mode_set_keys), which rewrites the
 //      EDITMODE block on disk during in-editor sessions. No-op in prod.
 const TWEAKS_LS_KEY = 'swiped.tweaks';
 function useTweaks(defaults) {
@@ -179,6 +183,11 @@ function useTweaks(defaults) {
     setValues((prev) => {
       const next = { ...prev, ...edits };
       try { localStorage.setItem(TWEAKS_LS_KEY, JSON.stringify(next)); } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent('swiped-state-set', {
+          detail: { key: TWEAKS_LS_KEY, value: next },
+        }));
+      } catch {}
       return next;
     });
     try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*'); } catch {}
@@ -186,11 +195,33 @@ function useTweaks(defaults) {
     // can react — the parent message only reaches the host, not peers.
     window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
   }, []);
+
+  // External pushes (sync.js receiving a Firestore snapshot) update the in-
+  // memory state so the UI reflects edits made on another device.
+  React.useEffect(() => {
+    const onExternal = (e) => {
+      if (!e.detail || e.detail.key !== TWEAKS_LS_KEY) return;
+      const incoming = e.detail.value;
+      if (!incoming || typeof incoming !== 'object') return;
+      setValues((prev) => {
+        try {
+          if (JSON.stringify(prev) === JSON.stringify(incoming)) return prev;
+        } catch {}
+        return { ...defaults, ...incoming };
+      });
+    };
+    window.addEventListener('swiped-state-external', onExternal);
+    return () => window.removeEventListener('swiped-state-external', onExternal);
+  }, [defaults]);
+
   return [values, setTweak];
 }
 
 // Generic localStorage-backed state. Used for the school section so semesters,
 // classes, per-week tasks/notes and the active selection survive close/reopen.
+// Same dual-channel behavior as useTweaks: fires swiped-state-set on every
+// change for sync.js to pick up, listens for swiped-state-external to apply
+// pushes from Firestore on other devices.
 function usePersistedState(key, initial) {
   const [val, setVal] = React.useState(() => {
     try {
@@ -203,7 +234,26 @@ function usePersistedState(key, initial) {
   });
   React.useEffect(() => {
     try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+    try {
+      window.dispatchEvent(new CustomEvent('swiped-state-set', {
+        detail: { key, value: val },
+      }));
+    } catch {}
   }, [key, val]);
+  React.useEffect(() => {
+    const onExternal = (e) => {
+      if (!e.detail || e.detail.key !== key) return;
+      const incoming = e.detail.value;
+      setVal((prev) => {
+        try {
+          if (JSON.stringify(prev) === JSON.stringify(incoming)) return prev;
+        } catch {}
+        return incoming;
+      });
+    };
+    window.addEventListener('swiped-state-external', onExternal);
+    return () => window.removeEventListener('swiped-state-external', onExternal);
+  }, [key]);
   return [val, setVal];
 }
 
