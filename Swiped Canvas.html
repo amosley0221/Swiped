@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swiped — Canvas</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; font-family: 'Geist', ui-sans-serif, system-ui; background: #efece5; }
+    #root { width: 100%; height: 100%; }
+    iframe { border: 0; display: block; }
+    .pwa-card {
+      width: 460px; height: 880px; box-sizing: border-box;
+      background: #FAFAF7; border-radius: 18px; overflow: hidden;
+      box-shadow: 0 30px 60px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);
+      display: flex; flex-direction: column;
+    }
+    .pwa-chrome {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; background: #fff; border-bottom: 0.5px solid rgba(0,0,0,0.08);
+    }
+    .pwa-dots { display: flex; gap: 6px; }
+    .pwa-dots i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+    .pwa-url {
+      flex: 1; height: 22px; border-radius: 11px; background: #f3f1ec;
+      display: flex; align-items: center; padding: 0 12px;
+      font-family: 'Geist Mono', monospace; font-size: 11px; color: rgba(0,0,0,0.55);
+    }
+    .open-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px; border-radius: 10px; background: #0B0B0E; color: #FAFAF7;
+      font-family: 'Geist Mono', monospace; font-size: 11px; letter-spacing: 0.12em;
+      text-transform: uppercase; text-decoration: none; cursor: pointer;
+    }
+    .note {
+      font-family: 'Geist Mono', monospace; font-size: 11px; color: rgba(0,0,0,0.55);
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="ios-frame.jsx"></script>
+  <script type="text/babel" src="design-canvas.jsx"></script>
+
+  <script type="text/babel">
+    const SwipedIframe = ({ width, height, radius }) => (
+      <iframe
+        src="Swiped.html"
+        title="Swiped"
+        style={{
+          width, height, border: 0,
+          borderRadius: radius || 0,
+          background: '#FAFAF7',
+        }}
+      />
+    );
+
+    function PhoneFrame() {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+          <IOSDevice width={402} height={874}>
+            <div style={{ position: 'absolute', inset: 0 }}>
+              <SwipedIframe width="100%" height="100%" />
+            </div>
+          </IOSDevice>
+        </div>
+      );
+    }
+
+    function StandaloneRoute() {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+          <div className="pwa-card">
+            <div className="pwa-chrome">
+              <div className="pwa-dots">
+                <i style={{ background: '#ff5f57' }} />
+                <i style={{ background: '#febc2e' }} />
+                <i style={{ background: '#28c840' }} />
+              </div>
+              <div className="pwa-url">swiped.app</div>
+              <a className="open-link" href="Swiped.html" target="_blank" rel="noopener">Open ↗</a>
+            </div>
+            <div style={{ flex: 1, background: '#FAFAF7' }}>
+              <SwipedIframe width="100%" height="100%" />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function InstallSheet() {
+      return (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%',
+          padding: 40, boxSizing: 'border-box',
+        }}>
+          <div style={{
+            width: 360, background: '#fff', borderRadius: 22, overflow: 'hidden',
+            boxShadow: '0 30px 60px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06)',
+            fontFamily: 'Geist, ui-sans-serif, system-ui',
+          }}>
+            <div style={{ padding: '24px 22px 18px', display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: 14, background: '#0B0B0E',
+                position: 'relative', overflow: 'hidden', flexShrink: 0,
+              }}>
+                <div style={{
+                  position: 'absolute', left: '50%', bottom: -16,
+                  transform: 'translateX(-50%)',
+                  width: 64, height: 64, borderRadius: '50%', background: '#FAFAF7',
+                  border: '2px solid #3B6EFF',
+                }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em' }}>Swiped</div>
+                <div style={{
+                  fontFamily: 'Geist Mono, monospace', fontSize: 11,
+                  color: 'rgba(0,0,0,0.5)', letterSpacing: '0.1em',
+                  textTransform: 'uppercase', marginTop: 4,
+                }}>swiped.app</div>
+              </div>
+            </div>
+            <div style={{ padding: '0 22px 22px', color: 'rgba(0,0,0,0.65)', fontSize: 14, lineHeight: 1.45 }}>
+              Install Swiped to your home screen. Runs offline, full-screen, just like a native app — until the Swift build lands.
+            </div>
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 1, background: 'rgba(0,0,0,0.06)',
+            }}>
+              {[
+                { n: '1', t: 'Tap', s: 'the Share icon in Safari' },
+                { n: '2', t: 'Choose', s: '"Add to Home Screen"' },
+                { n: '3', t: 'Open', s: 'Swiped from your home screen' },
+              ].map((s) => (
+                <div key={s.n} style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '14px 22px', background: '#fff',
+                }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: '50%',
+                    background: '#0B0B0E', color: '#FAFAF7',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontFamily: 'Geist Mono, monospace', fontSize: 12, fontWeight: 600,
+                  }}>{s.n}</div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>
+                      <span style={{ fontStyle: 'italic', fontFamily: 'Instrument Serif, serif', fontSize: 17, marginRight: 4 }}>{s.t}</span>
+                      <span style={{ color: 'rgba(0,0,0,0.6)' }}>{s.s}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: 18, display: 'flex', justifyContent: 'center' }}>
+              <a className="open-link" href="Swiped.html" target="_blank" rel="noopener">Open Swiped ↗</a>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const App = () => (
+      <DesignCanvas title="Swiped" subtitle="Productivity, swiped from a dial">
+        <DCSection id="prototype" title="Prototype">
+          <DCArtboard id="phone" label="In an iPhone frame" width={460} height={930}>
+            <PhoneFrame />
+          </DCArtboard>
+          <DCArtboard id="pwa" label="Standalone PWA route" width={520} height={930}>
+            <StandaloneRoute />
+          </DCArtboard>
+          <DCArtboard id="install" label="Add-to-Home-Screen flow" width={440} height={930}>
+            <InstallSheet />
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+    );
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

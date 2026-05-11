@@ -1,0 +1,637 @@
+// app.jsx — Swiped main app. Composes Wheel + LiquidReveal + DetailView and
+// owns gesture state, currentIdx (with snap inertia), liquid progress.
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#3B6EFF",
+  "wheelSize": 280,
+  "wheelSpacing": 26,
+  "liquid": "paint",
+  "typeface": "modern",
+  "sections": [
+    {"id":"work","name":"Work","iconKey":"briefcase","contentKey":"work"},
+    {"id":"budget","name":"Budget","iconKey":"dollar","contentKey":"budget"},
+    {"id":"school","name":"School","iconKey":"cap","contentKey":"school"},
+    {"id":"goals","name":"Goals","iconKey":"target","contentKey":"goals"},
+    {"id":"notes","name":"Notes","iconKey":"notebook","contentKey":"notes"}
+  ]
+}/*EDITMODE-END*/;
+
+const TYPEFACES = {
+  modern: {
+    family: "'Geist', ui-sans-serif, system-ui, sans-serif",
+    display: "'Instrument Serif', Georgia, serif",
+    mono: "'Geist Mono', ui-monospace, SF Mono, monospace",
+  },
+  editorial: {
+    family: "'Newsreader', Georgia, serif",
+    display: "'Newsreader', Georgia, serif",
+    mono: "'JetBrains Mono', ui-monospace, monospace",
+  },
+  utility: {
+    family: "'JetBrains Mono', ui-monospace, monospace",
+    display: "'JetBrains Mono', ui-monospace, monospace",
+    mono: "'JetBrains Mono', ui-monospace, monospace",
+  },
+  geometric: {
+    family: "'DM Sans', ui-sans-serif, system-ui",
+    display: "'DM Sans', ui-sans-serif, system-ui",
+    mono: "'DM Mono', ui-monospace, monospace",
+  },
+};
+
+const LIQUID_OPTIONS = [
+  { value: 'paint', label: 'Gloopy paint' },
+  { value: 'water', label: 'Water / ink' },
+  { value: 'blob', label: 'Soft blob' },
+  { value: 'metaballs', label: 'Metaballs' },
+];
+
+function useViewport() {
+  const [vp, setVp] = React.useState(() => ({
+    w: window.innerWidth, h: window.innerHeight,
+  }));
+  React.useEffect(() => {
+    const onR = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onR);
+    return () => window.removeEventListener('resize', onR);
+  }, []);
+  return vp;
+}
+
+function useTweenIndex(targetIdx, onArrive) {
+  // tweens currentIdx toward targetIdx using rAF
+  const [idx, setIdx] = React.useState(targetIdx);
+  const idxRef = React.useRef(targetIdx);
+  const raf = React.useRef(null);
+  const arrivedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    arrivedRef.current = false;
+    cancelAnimationFrame(raf.current);
+    const tick = () => {
+      const cur = idxRef.current;
+      const delta = targetIdx - cur;
+      if (Math.abs(delta) < 0.001) {
+        idxRef.current = targetIdx;
+        setIdx(targetIdx);
+        if (!arrivedRef.current) {
+          arrivedRef.current = true;
+          onArrive && onArrive(targetIdx);
+        }
+        return;
+      }
+      // critically-damped-ish ease
+      const next = cur + delta * 0.18;
+      idxRef.current = next;
+      setIdx(next);
+      raf.current = requestAnimationFrame(tick);
+    };
+    raf.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf.current);
+  }, [targetIdx]);
+
+  // direct-set during drag
+  const setDirect = React.useCallback((v) => {
+    cancelAnimationFrame(raf.current);
+    idxRef.current = v;
+    setIdx(v);
+  }, []);
+
+  return [idx, setDirect];
+}
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const { w: vw, h: vh } = useViewport();
+  // Clamp to mobile width on desktop. The "stage" is the actual app viewport.
+  const W = Math.min(vw, 440);
+  const H = vh;
+
+  const sections = t.sections;
+  const [targetIdx, setTargetIdx] = React.useState(0);
+  const [idx, setIdxDirect] = useTweenIndex(targetIdx);
+
+  // Liquid gesture
+  const [liquid, setLiquid] = React.useState({ active: false, progress: 0, origin: null });
+  const [detailOpen, setDetailOpen] = React.useState(false);
+  const liquidRef = React.useRef(liquid);
+  liquidRef.current = liquid;
+
+  // When wheel reports a drag, set idx directly
+  const onWheelDrag = (newIdx) => {
+    setIdxDirect(Math.max(-0.4, Math.min(sections.length - 1 + 0.4, newIdx)));
+  };
+  const onWheelSettle = (snap) => {
+    setTargetIdx(snap);
+    // pulse tick — done via CSS class toggle on accent dot below
+    setPulseKey((k) => k + 1);
+  };
+
+  const [pulseKey, setPulseKey] = React.useState(0);
+
+  // Liquid gesture: start when wheel reports upward drag intent
+  const onLiquidStart = ({ startX, startY, currentY }) => {
+    setLiquid({ active: true, progress: 0, origin: { x: Math.min(W - 30, Math.max(30, startX)), y: startY } });
+    const startTime = performance.now();
+    const move = (ev) => {
+      const dy = startY - ev.clientY;
+      const p = Math.max(0, Math.min(1, dy / (H * 0.55)));
+      setLiquid((l) => ({ ...l, progress: p }));
+    };
+    const up = (ev) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      const dy = startY - (ev.clientY ?? startY);
+      const elapsed = performance.now() - startTime;
+      const velocity = dy / Math.max(50, elapsed);
+      const finalProgress = Math.max(0, Math.min(1, dy / (H * 0.55)));
+      // commit if past threshold OR fast upward fling
+      if (finalProgress > 0.45 || (velocity > 1.2 && finalProgress > 0.2)) {
+        // animate progress → 1, then open
+        animateProgress(liquidRef.current.progress || finalProgress, 1, 280, () => {
+          setDetailOpen(true);
+        });
+      } else {
+        animateProgress(liquidRef.current.progress || finalProgress, 0, 240, () => {
+          setLiquid({ active: false, progress: 0, origin: null });
+        });
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const animateProgress = (from, to, duration, done) => {
+    const start = performance.now();
+    const tick = () => {
+      const elapsed = performance.now() - start;
+      const k = Math.min(1, elapsed / duration);
+      const eased = to > from
+        ? 1 - Math.pow(1 - k, 3)
+        : Math.pow(k, 2);
+      const p = from + (to - from) * eased;
+      setLiquid((l) => ({ ...l, progress: p }));
+      if (k < 1) requestAnimationFrame(tick);
+      else done && done();
+    };
+    requestAnimationFrame(tick);
+  };
+
+  const closeDetail = () => {
+    setDetailOpen(false);
+    animateProgress(1, 0, 380, () => {
+      setLiquid({ active: false, progress: 0, origin: null });
+    });
+  };
+
+  // Drag-down to close gesture: pointerdown on X (or top handle) lets the user
+  // pull the liquid back toward the dial, mirroring the open animation.
+  const onCloseDragStart = (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startTime = performance.now();
+    let moved = false;
+    let lastY = startY;
+    setDetailOpen(false); // hide detail content while dragging; opacity follows progress
+    // origin for the liquid "sink" point follows finger x so paint drains where you drag
+    setLiquid({ active: true, progress: 1, origin: { x: Math.min(W - 30, Math.max(30, startX)), y: H - 220 } });
+
+    const move = (ev) => {
+      lastY = ev.clientY;
+      const dy = ev.clientY - startY;
+      if (Math.abs(dy) > 4) moved = true;
+      const p = Math.max(0, Math.min(1, 1 - dy / (H * 0.55)));
+      setLiquid((l) => ({ ...l, progress: p, origin: { x: Math.min(W - 30, Math.max(30, ev.clientX)), y: H - 220 } }));
+    };
+    const up = (ev) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      const dy = (ev.clientY ?? lastY) - startY;
+      const elapsed = performance.now() - startTime;
+      const velocity = dy / Math.max(50, elapsed); // positive = downward fling
+      // tap fallback — no real drag
+      if (!moved) {
+        animateProgress(liquidRef.current.progress, 0, 420, () => {
+          setLiquid({ active: false, progress: 0, origin: null });
+        });
+        return;
+      }
+      const finalProgress = liquidRef.current.progress;
+      const commit = finalProgress < 0.55 || (velocity > 1.0 && finalProgress < 0.85);
+      if (commit) {
+        animateProgress(finalProgress, 0, 320, () => {
+          setLiquid({ active: false, progress: 0, origin: null });
+        });
+      } else {
+        // snap back open
+        animateProgress(finalProgress, 1, 240, () => setDetailOpen(true));
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const selectedIdx = Math.round(idx);
+  const safeIdx = Math.max(0, Math.min(sections.length - 1, selectedIdx));
+  const selected = sections[safeIdx];
+  const contentKey = selected?.contentKey || selected?.id;
+  const content = SECTION_LIB[contentKey] || SECTION_LIB.work;
+
+  // For the wheel's icon lookup, ensure each section has a valid iconKey
+  const wheelSections = sections.map((s) => ({
+    ...s,
+    iconKey: s.iconKey || SECTION_LIB[s.contentKey || s.id]?.icon || 'target',
+  }));
+
+  const radius = t.wheelSize;
+  const protrusion = 175; // fixed — top of dial stays put; radius controls steepness
+  const tf = TYPEFACES[t.typeface] || TYPEFACES.modern;
+
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+
+  // Track velocity (signed) for slosh
+  const [velocity, setVelocity] = React.useState(0);
+  const lastIdxRef = React.useRef(idx);
+  const lastTRef = React.useRef(performance.now());
+  React.useEffect(() => {
+    const now = performance.now();
+    const dt = Math.max(0.001, (now - lastTRef.current) / 1000);
+    const v = (idx - lastIdxRef.current) / dt;
+    lastIdxRef.current = idx;
+    lastTRef.current = now;
+    setVelocity((prev) => prev + (v - prev) * 0.5);
+  }, [idx]);
+  // decay
+  React.useEffect(() => {
+    const i = setInterval(() => setVelocity((v) => v * 0.85), 60);
+    return () => clearInterval(i);
+  }, []);
+
+  // Brief content fade key (transitions when idx changes)
+  const briefKey = safeIdx;
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: W, height: H,
+        background: '#FAFAF7',
+        overflow: 'hidden',
+        margin: '0 auto',
+        fontFamily: tf.family,
+        color: '#0B0B0E',
+        // smooth subpixel
+        WebkitFontSmoothing: 'antialiased',
+        MozOsxFontSmoothing: 'grayscale',
+      }}
+    >
+      {/* Top bar */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0,
+        padding: '54px 24px 0', // accounts for status bar / notch
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        zIndex: 4,
+      }}>
+        <div style={{
+          fontFamily: tf.mono, fontSize: 10.5, letterSpacing: '0.22em',
+          textTransform: 'uppercase', color: 'rgba(11,11,14,0.45)',
+        }}>
+          Swiped
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            fontFamily: tf.mono, fontSize: 10.5, letterSpacing: '0.14em',
+            color: 'rgba(11,11,14,0.45)', fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap',
+          }}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}
+          </div>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Settings"
+            style={{
+              appearance: 'none', border: '0.5px solid rgba(11,11,14,0.1)',
+              background: 'rgba(255,255,255,0.6)', width: 30, height: 30,
+              borderRadius: '50%', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', cursor: 'pointer', padding: 0,
+              color: 'rgba(11,11,14,0.6)',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <circle cx="7" cy="7" r="2" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M7 1v2 M7 11v2 M1 7h2 M11 7h2 M2.8 2.8l1.4 1.4 M9.8 9.8l1.4 1.4 M2.8 11.2l1.4-1.4 M9.8 4.2l1.4-1.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Brief / main content (above wheel) */}
+      <div style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0,
+        height: H - protrusion - 40,
+        display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        padding: '0 28px',
+        zIndex: 3,
+      }}>
+        <BriefPanel
+          key={briefKey}
+          section={selected}
+          content={content}
+          accent={t.accent}
+          tf={tf}
+          pulseKey={pulseKey}
+        />
+      </div>
+
+      {/* Section dots / progress (between brief and wheel) */}
+      <SectionDots
+        sections={wheelSections}
+        index={idx}
+        accent={t.accent}
+        bottom={protrusion + 28}
+      />
+      {/* small upward arrow chip floating above wheel — touch handle hint */}
+
+      {/* Wheel */}
+      <Wheel
+        sections={wheelSections}
+        index={idx}
+        radius={radius}
+        sectionAngle={t.wheelSpacing}
+        accent={t.accent}
+        width={W}
+        height={H}
+        protrusion={protrusion}
+        velocity={velocity}
+        onDrag={onWheelDrag}
+        onSettle={onWheelSettle}
+        onLiquidStart={onLiquidStart}
+      />
+
+      {/* Hint */}
+      <SwipeHint visible={!liquid.active && !detailOpen} protrusion={protrusion} tf={tf} />
+
+      {/* Liquid */}
+      <LiquidReveal
+        progress={liquid.progress}
+        W={W} H={H}
+        style={t.liquid}
+        origin={liquid.origin}
+        accent={t.accent}
+      />
+
+      {/* Detail view (over liquid black) */}
+      {(detailOpen || liquid.progress > 0.3) && (
+        <DetailView
+          section={selected}
+          content={content}
+          accent={t.accent}
+          visible={detailOpen}
+          progress={liquid.progress}
+          onClose={closeDetail}
+          onCloseDragStart={onCloseDragStart}
+        />
+      )}
+
+      {/* Tweaks panel */}
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Style">
+          <TweakColor
+            label="Accent"
+            value={t.accent}
+            options={['#3B6EFF', '#FF5A1F', '#4FA862', '#E8C547', '#0B0B0E']}
+            onChange={(v) => setTweak('accent', v)}
+          />
+          <TweakRadio
+            label="Typeface"
+            value={t.typeface}
+            options={[
+              { value: 'modern', label: 'Modern' },
+              { value: 'editorial', label: 'Editorial' },
+              { value: 'utility', label: 'Utility' },
+              { value: 'geometric', label: 'Geometric' },
+            ]}
+            onChange={(v) => setTweak('typeface', v)}
+          />
+        </TweakSection>
+        <TweakSection label="Wheel">
+          <TweakSlider
+            label="Steepness" value={t.wheelSize} min={220} max={460} step={5} unit=""
+            onChange={(v) => setTweak('wheelSize', v)}
+          />
+          <TweakSlider
+            label="Spacing" value={t.wheelSpacing} min={18} max={36} step={1} unit="°"
+            onChange={(v) => setTweak('wheelSpacing', v)}
+          />
+        </TweakSection>
+        <TweakSection label="Liquid">
+          <TweakRadio
+            label="Style"
+            value={t.liquid}
+            options={LIQUID_OPTIONS}
+            onChange={(v) => setTweak('liquid', v)}
+          />
+          <TweakButton
+            label="Preview swipe-up"
+            onClick={() => {
+              setLiquid({ active: true, progress: 0, origin: { x: W / 2, y: H * 0.7 } });
+              animateProgress(0, 1, 900, () => setDetailOpen(true));
+            }}
+          />
+        </TweakSection>
+        <TweakSection label="Sections">
+          <TweakButton label="Open settings…" onClick={() => setSettingsOpen(true)} />
+        </TweakSection>
+      </TweaksPanel>
+
+      <SettingsSheet
+        open={settingsOpen}
+        sections={t.sections}
+        onChange={(v) => setTweak('sections', v)}
+        onClose={() => setSettingsOpen(false)}
+        accent={t.accent}
+        tf={tf}
+      />
+    </div>
+  );
+}
+
+function BriefPanel({ section, content, accent, tf, pulseKey }) {
+  // animated mount: fade + slight slide
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    const t = setTimeout(() => setMounted(true), 20);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div
+      style={{
+        opacity: mounted ? 1 : 0,
+        transform: mounted ? 'translateY(0)' : 'translateY(8px)',
+        transition: 'opacity 0.32s ease-out, transform 0.32s ease-out',
+        display: 'flex', flexDirection: 'column', gap: 14,
+      }}
+    >
+      {/* big icon */}
+      <div style={{ width: 44, height: 44, color: accent, marginBottom: 6 }}>
+        {section.iconData
+          ? <img src={section.iconData} alt="" style={{ width: 44, height: 44, objectFit: 'contain' }} />
+          : (Icon[section.iconKey] || Icon.target)}
+      </div>
+      {/* section name in mono */}
+      <div style={{
+        fontFamily: tf.mono, fontSize: 11, letterSpacing: '0.2em',
+        textTransform: 'uppercase', color: 'rgba(11,11,14,0.5)',
+      }}>
+        {section.name}
+      </div>
+      {/* headline (serif italic) */}
+      <div style={{
+        fontFamily: tf.display, fontStyle: 'italic',
+        fontSize: 56, lineHeight: '0.95', letterSpacing: '-0.025em',
+        fontWeight: 400, color: '#0B0B0E',
+        textWrap: 'pretty',
+      }}>
+        {content.headline}
+      </div>
+      {/* brief */}
+      <div style={{
+        fontFamily: tf.family, fontSize: 17, lineHeight: 1.35,
+        color: 'rgba(11,11,14,0.62)', letterSpacing: '-0.01em',
+        textWrap: 'pretty',
+      }}>
+        {content.brief}
+      </div>
+
+      {/* mini stat strip */}
+      <div style={{ display: 'flex', gap: 18, marginTop: 16 }}>
+        {content.stats.slice(0, 3).map((s, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+            <div style={{
+              fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.14em',
+              textTransform: 'uppercase', color: 'rgba(11,11,14,0.4)',
+              whiteSpace: 'nowrap',
+            }}>{s.label}</div>
+            <div style={{
+              fontFamily: tf.family, fontSize: 16, fontWeight: 500,
+              letterSpacing: '-0.01em', color: '#0B0B0E',
+              fontVariantNumeric: 'tabular-nums',
+              whiteSpace: 'nowrap',
+            }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionDots({ sections, index, accent, bottom }) {
+  return (
+    <div style={{
+      position: 'absolute', left: 0, right: 0, bottom,
+      display: 'flex', justifyContent: 'center', gap: 6,
+      zIndex: 3, pointerEvents: 'none',
+    }}>
+      {sections.map((s, i) => {
+        const dist = Math.abs(i - index);
+        const isSelected = dist < 0.5;
+        return (
+          <div key={s.id} style={{
+            width: isSelected ? 16 : 4, height: 4, borderRadius: 2,
+            background: isSelected ? accent : 'rgba(11,11,14,0.18)',
+            transition: 'width 0.25s ease, background 0.25s ease',
+          }} />
+        );
+      })}
+    </div>
+  );
+}
+
+function SwipeHint({ visible, protrusion, tf }) {
+  return (
+    <div style={{
+      position: 'absolute',
+      left: 0, right: 0,
+      bottom: protrusion + 60,
+      display: 'flex', justifyContent: 'center',
+      pointerEvents: 'none', zIndex: 8,
+      opacity: visible ? 0.6 : 0,
+      transition: 'opacity 0.3s',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        color: 'rgba(11,11,14,0.5)',
+        fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.2em',
+        textTransform: 'uppercase',
+      }}>
+        <svg width="8" height="10" viewBox="0 0 8 10" fill="none">
+          <path d="M4 9 V1 M1 4l3-3 3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span style={{ whiteSpace: 'nowrap' }}>Hold &amp; swipe up</span>
+      </div>
+    </div>
+  );
+}
+
+function SectionEditor({ sections, onChange }) {
+  const AVAILABLE = ['work', 'budget', 'school', 'goals', 'notes', 'health', 'habits', 'tasks', 'reading'];
+  const used = new Set(sections.map((s) => s.contentKey || s.id));
+  const remove = (i) => onChange(sections.filter((_, idx) => idx !== i));
+  const rename = (i, name) => onChange(sections.map((s, idx) => (idx === i ? { ...s, name } : s)));
+  const add = (key) => {
+    const lib = SECTION_LIB[key];
+    if (!lib) return;
+    const cap = key[0].toUpperCase() + key.slice(1);
+    onChange([
+      ...sections,
+      { id: key + '_' + Date.now(), name: cap, iconKey: lib.icon, contentKey: key },
+    ]);
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {sections.map((s, i) => (
+        <div key={s.id} style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '4px 6px', background: 'rgba(0,0,0,0.04)', borderRadius: 6,
+        }}>
+          <input
+            value={s.name}
+            onChange={(e) => rename(i, e.target.value)}
+            style={{
+              flex: 1, border: 0, background: 'transparent',
+              font: 'inherit', outline: 'none', minWidth: 0,
+            }}
+          />
+          <button
+            onClick={() => remove(i)}
+            style={{
+              appearance: 'none', border: 0, background: 'transparent',
+              color: 'rgba(0,0,0,0.4)', cursor: 'pointer', padding: '0 4px',
+              fontSize: 14, lineHeight: 1,
+            }}
+          >✕</button>
+        </div>
+      ))}
+      {AVAILABLE.filter((k) => !used.has(k)).length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+          {AVAILABLE.filter((k) => !used.has(k)).map((k) => (
+            <button
+              key={k}
+              onClick={() => add(k)}
+              style={{
+                appearance: 'none', border: '0.5px dashed rgba(0,0,0,0.2)',
+                background: 'transparent', borderRadius: 5,
+                padding: '3px 8px', font: 'inherit', cursor: 'pointer',
+                color: 'rgba(0,0,0,0.6)',
+              }}
+            >+ {k}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { App, TWEAK_DEFAULTS });
