@@ -165,25 +165,13 @@ function DetailView({
         }} />
       </div>
 
-      {/* Top bar: close + section name */}
+      {/* Top bar: just the section name, centered. Closing is done by
+          dragging the top handle bar down (or with a downward fling on the
+          handle's pull tab) — one mechanism, less visual noise. */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
         marginBottom: 18, marginTop: 14, position: 'relative', zIndex: 3,
       }}>
-        <button
-          onPointerDown={onCloseDragStart}
-          aria-label="Close (drag down)"
-          style={{
-            appearance: 'none', border: 0, background: 'rgba(255,255,255,0.08)',
-            color: FG_PINK, width: 34, height: 34, borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'grab', touchAction: 'none',
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 10 10 2 M2 2 10 10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          </svg>
-        </button>
         <div style={{
           fontFamily: 'Geist Mono, ui-monospace, monospace',
           fontSize: 10.5, letterSpacing: '0.18em', textTransform: 'uppercase',
@@ -191,7 +179,6 @@ function DetailView({
         }}>
           {isPerson ? 'Person' : isHome ? 'Home' : isBudget ? 'Budget' : section.name}
         </div>
-        <div style={{ width: 34 }} />
       </div>
 
       {/* Headline */}
