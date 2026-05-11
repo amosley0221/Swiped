@@ -273,15 +273,15 @@
 
   // ── Sign-in helpers ────────────────────────────────────────────────────
 
-  async function signInGoogle() {
+  async function signInPassword(email, password) {
     if (!client) return Promise.reject(new Error('Sync not initialized'));
+    if (!email || !email.trim()) return Promise.reject(new Error('Email is required'));
+    if (!password) return Promise.reject(new Error('Password is required'));
     status = 'signing-in';
     emitStatus();
-    const { error } = await client.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin + window.location.pathname,
-      },
+    const { error } = await client.auth.signInWithPassword({
+      email: email.trim(),
+      password,
     });
     if (error) {
       lastError = error;
@@ -291,32 +291,36 @@
     }
   }
 
-  async function sendMagicLink(email) {
+  async function signUpPassword(email, password) {
     if (!client) return Promise.reject(new Error('Sync not initialized'));
     if (!email || !email.trim()) return Promise.reject(new Error('Email is required'));
+    if (!password || password.length < 6) {
+      return Promise.reject(new Error('Password must be at least 6 characters'));
+    }
     status = 'signing-in';
     emitStatus();
-    try {
-      const { error } = await client.auth.signInWithOtp({
-        email: email.trim(),
-        options: {
-          emailRedirectTo: window.location.origin + window.location.pathname,
-          shouldCreateUser: true,
-        },
-      });
-      if (error) {
-        lastError = error;
-        status = 'error';
-        emitStatus();
-        throw error;
-      }
-      status = 'sent-email';
-      emitStatus();
-    } catch (e) {
-      lastError = e;
+    const { data, error } = await client.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        emailRedirectTo: window.location.origin + window.location.pathname,
+      },
+    });
+    if (error) {
+      lastError = error;
       status = 'error';
       emitStatus();
-      throw e;
+      throw error;
+    }
+    // If email confirmation is required by the project, no session is
+    // returned yet and the user has to click a link in their inbox first.
+    // If confirmation is off, signUp signs the user in immediately and
+    // onAuthStateChange will fire.
+    if (data && data.session) {
+      // signed in immediately
+    } else {
+      status = 'sent-email';
+      emitStatus();
     }
   }
 
@@ -328,8 +332,8 @@
   // Public surface — used by settings.jsx to render the sign-in UI.
   window.SwipedSync = {
     init,
-    signInGoogle,
-    sendMagicLink,
+    signInPassword,
+    signUpPassword,
     signOut,
     get user() { return currentUser; },
     get status() { return status; },
