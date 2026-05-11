@@ -109,6 +109,40 @@ function App() {
   const [schoolSemesters, setSchoolSemesters] = React.useState(
     () => SECTION_LIB.school.semesters
   );
+  const [schoolActiveSemesterId, setSchoolActiveSemesterId] = React.useState(
+    () => SECTION_LIB.school.semesters[0]?.id
+  );
+
+  // Per-week tasks/log/note storage for the school section. Keys are the
+  // Monday of each week (ISO date). Seeded with the default-week entry so
+  // the prototype's sample tasks show up when the user first opens school.
+  const [schoolWeeks, setSchoolWeeks] = React.useState(() => {
+    const defaultSem = SECTION_LIB.school.semesters[0];
+    const defaultDate = (defaultSem && semesterDefaultWeek(defaultSem.name)) || new Date();
+    return {
+      [weekKey(defaultDate)]: {
+        tasks: SECTION_LIB.school.tasks,
+        log: SECTION_LIB.school.log,
+        note: SECTION_LIB.school.note,
+      },
+    };
+  });
+  const [schoolActiveWeekKey, setSchoolActiveWeekKey] = React.useState(() => {
+    const defaultSem = SECTION_LIB.school.semesters[0];
+    const defaultDate = (defaultSem && semesterDefaultWeek(defaultSem.name)) || new Date();
+    return weekKey(defaultDate);
+  });
+
+  // Picking a semester also jumps the weekly view to that semester's default
+  // week (first week of Jan/Jun/Aug). User can still navigate freely afterward.
+  const selectSchoolSemester = (id) => {
+    setSchoolActiveSemesterId(id);
+    const sem = schoolSemesters.find((s) => s.id === id);
+    if (sem) {
+      const def = semesterDefaultWeek(sem.name);
+      if (def) setSchoolActiveWeekKey(weekKey(def));
+    }
+  };
 
   // Sheet gesture state. `finger` is the live (or last) pointer position;
   // `progress` is the open ratio (0=hidden, 1=fully covering). Together they
@@ -437,6 +471,12 @@ function App() {
               onCloseDragStart={onCloseDragStart}
               schoolSemesters={schoolSemesters}
               setSchoolSemesters={setSchoolSemesters}
+              schoolActiveSemesterId={schoolActiveSemesterId}
+              selectSchoolSemester={selectSchoolSemester}
+              schoolWeeks={schoolWeeks}
+              setSchoolWeeks={setSchoolWeeks}
+              schoolActiveWeekKey={schoolActiveWeekKey}
+              setSchoolActiveWeekKey={setSchoolActiveWeekKey}
             />
           </div>
         </div>

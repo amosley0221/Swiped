@@ -370,7 +370,51 @@ function calcProgressiveGPA(semesters, fromIndex) {
   );
 }
 
+// Week math (Monday-anchored, mirrors how academic weeks are typically read).
+function startOfWeek(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+function weekKey(date) {
+  const d = startOfWeek(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+function parseWeekKey(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// Default week for a semester name. Spring → January, Summer → June, Fall/
+// Autumn → August. Returns the first Monday on or after the 1st of that
+// month. Returns null if the name doesn't match a known term.
+function semesterDefaultWeek(name) {
+  if (!name) return null;
+  const yMatch = name.match(/\b(20\d{2})\b/) || name.match(/'?(\d{2})\b/);
+  const year = yMatch
+    ? (yMatch[1].length === 2 ? 2000 + parseInt(yMatch[1], 10) : parseInt(yMatch[1], 10))
+    : new Date().getFullYear();
+  const lower = name.toLowerCase();
+  let month;
+  if (lower.includes('spring')) month = 0;
+  else if (lower.includes('summer')) month = 5;
+  else if (lower.includes('fall') || lower.includes('autumn')) month = 7;
+  else return null;
+  const d = new Date(year, month, 1);
+  while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
+  return d;
+}
+
 Object.assign(window, {
   Icon, SECTION_LIB, ICON_KEYS,
   GRADE_POINTS, GRADE_OPTIONS, calcGPA, calcOverallGPA, calcProgressiveGPA,
+  startOfWeek, weekKey, parseWeekKey, semesterDefaultWeek,
 });

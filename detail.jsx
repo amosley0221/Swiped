@@ -7,28 +7,85 @@
 function DetailView({
   section, content, accent, onClose, onCloseDragStart, visible, progress = 1,
   schoolSemesters, setSchoolSemesters,
+  schoolActiveSemesterId, selectSchoolSemester,
+  schoolWeeks, setSchoolWeeks, schoolActiveWeekKey, setSchoolActiveWeekKey,
 }) {
-  const [tasks, setTasks] = React.useState(content.tasks);
-  const [log, setLog] = React.useState(content.log);
-  const [note, setNote] = React.useState(content.note);
+  const isSchool = (section.contentKey || section.id) === 'school';
+
+  // Non-school sections still keep their own in-memory tasks/log/note,
+  // refreshed when you swipe to a different section.
+  const [localTasks, setLocalTasks] = React.useState(content.tasks);
+  const [localLog, setLocalLog] = React.useState(content.log);
+  const [localNote, setLocalNote] = React.useState(content.note);
   const [draft, setDraft] = React.useState('');
   const inputRef = React.useRef(null);
 
   React.useEffect(() => {
-    setTasks(content.tasks);
-    setLog(content.log);
-    setNote(content.note);
-  }, [section.id]);
+    if (!isSchool) {
+      setLocalTasks(content.tasks);
+      setLocalLog(content.log);
+      setLocalNote(content.note);
+    }
+  }, [section.id, isSchool]);
+
+  // For school, the week store is the source of truth. Read/write helpers
+  // act on the currently-active week.
+  const weekData = isSchool
+    ? (schoolWeeks[schoolActiveWeekKey] || { tasks: [], log: [], note: '' })
+    : null;
+  const updateActiveWeek = React.useCallback((updater) => {
+    setSchoolWeeks((prev) => {
+      const cur = prev[schoolActiveWeekKey] || { tasks: [], log: [], note: '' };
+      return { ...prev, [schoolActiveWeekKey]: updater(cur) };
+    });
+  }, [setSchoolWeeks, schoolActiveWeekKey]);
+
+  const tasks = isSchool ? weekData.tasks : localTasks;
+  const log = isSchool ? weekData.log : localLog;
+  const note = isSchool ? weekData.note : localNote;
 
   const toggle = (id) => {
-    setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+    if (isSchool) {
+      updateActiveWeek((w) => ({
+        ...w,
+        tasks: w.tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
+      }));
+    } else {
+      setLocalTasks((ts) => ts.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+    }
+  };
+
+  const removeTask = (id) => {
+    if (isSchool) {
+      updateActiveWeek((w) => ({ ...w, tasks: w.tasks.filter((t) => t.id !== id) }));
+    } else {
+      setLocalTasks((ts) => ts.filter((t) => t.id !== id));
+    }
+  };
+
+  const setNote = (v) => {
+    if (isSchool) {
+      updateActiveWeek((w) => ({ ...w, note: v }));
+    } else {
+      setLocalNote(v);
+    }
   };
 
   const add = () => {
     if (!draft.trim()) return;
-    const nextId = (tasks[0]?.id || 0) + 1;
-    setTasks((ts) => [{ id: nextId + 1000, title: draft.trim(), done: false }, ...ts]);
-    setLog((l) => [{ t: 'Just now', text: `+ ${draft.trim()}` }, ...l]);
+    const text = draft.trim();
+    const newTask = { id: Date.now(), title: text, done: false };
+    const newLog = { t: 'Just now', text: `+ ${text}` };
+    if (isSchool) {
+      updateActiveWeek((w) => ({
+        ...w,
+        tasks: [newTask, ...w.tasks],
+        log: [newLog, ...w.log],
+      }));
+    } else {
+      setLocalTasks((ts) => [newTask, ...ts]);
+      setLocalLog((l) => [newLog, ...l]);
+    }
     setDraft('');
   };
 
@@ -138,7 +195,7 @@ function DetailView({
           ref={inputRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Quick add to this section…"
+          placeholder={isSchool ? 'Quick add to this week…' : 'Quick add to this section…'}
           style={{
             flex: 1, background: 'transparent', border: 0, outline: 'none',
             color: '#FAFAF7', fontFamily: 'Geist, ui-sans-serif, system-ui',
@@ -183,92 +240,138 @@ function DetailView({
 
       {/* Scroll region */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', marginRight: -8, paddingRight: 8 }}>
-        {(section.contentKey || section.id) === 'school' && schoolSemesters && (
+        {isSchool && schoolSemesters && (
           <SchoolClasses
             semesters={schoolSemesters}
             onChange={setSchoolSemesters}
+            activeId={schoolActiveSemesterId}
+            onSelect={selectSchoolSemester}
             accent={accent}
           />
         )}
 
-        {/* Tasks */}
-        <SectionTitle>Tasks · {tasks.filter((t) => !t.done).length} open</SectionTitle>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
-          {tasks.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => toggle(t.id)}
-              style={{
-                appearance: 'none', border: 0, background: 'transparent', textAlign: 'left',
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '11px 0', borderBottom: '0.5px solid rgba(255,255,255,0.08)',
-                color: t.done ? 'rgba(250,250,247,0.4)' : '#FAFAF7',
-                cursor: 'pointer',
-                fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 14,
-              }}
-            >
-              <div style={{
-                width: 18, height: 18, borderRadius: 5,
-                border: t.done ? `1.5px solid ${accent}` : '1.5px solid rgba(255,255,255,0.3)',
-                background: t.done ? accent : 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
-                transition: 'all 0.15s',
-              }}>
-                {t.done && (
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                    <path d="M2 5 4 7 8 3" stroke="#0B0B0E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </div>
-              <span style={{
-                textDecoration: t.done ? 'line-through' : 'none',
-                textDecorationColor: 'rgba(250,250,247,0.4)',
-                textDecorationThickness: '1px',
-              }}>{t.title}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Log */}
-        <SectionTitle>Recent</SectionTitle>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
-          {log.map((e, i) => (
-            <div key={i} style={{
-              display: 'grid', gridTemplateColumns: '64px 1fr', gap: 14,
-              padding: '9px 0', borderBottom: '0.5px solid rgba(255,255,255,0.08)',
-              alignItems: 'baseline',
-            }}>
-              <div style={{
-                fontFamily: 'Geist Mono, ui-monospace, monospace',
-                fontSize: 11, color: 'rgba(250,250,247,0.45)',
-                fontVariantNumeric: 'tabular-nums',
-              }}>{e.t}</div>
-              <div style={{ fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 13.5 }}>
-                {e.text}
-              </div>
+        {isSchool ? (
+          <WeeklyView
+            weekKey={schoolActiveWeekKey}
+            setWeekKey={setSchoolActiveWeekKey}
+            tasks={tasks}
+            log={log}
+            note={note}
+            onToggle={toggle}
+            onRemove={removeTask}
+            onNoteChange={setNote}
+            accent={accent}
+          />
+        ) : (
+          <>
+            <SectionTitle>Tasks · {tasks.filter((t) => !t.done).length} open</SectionTitle>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
+              {tasks.map((t) => (
+                <TaskRow key={t.id} task={t} accent={accent} onToggle={toggle} />
+              ))}
             </div>
-          ))}
-        </div>
 
-        {/* Note */}
-        <SectionTitle>Note</SectionTitle>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={4}
-          style={{
-            width: '100%', boxSizing: 'border-box', resize: 'none',
-            background: 'rgba(255,255,255,0.05)', color: '#FAFAF7',
-            border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 12,
-            padding: 12, outline: 'none',
-            fontFamily: '"Instrument Serif", Georgia, serif',
-            fontSize: 17, lineHeight: 1.45, fontStyle: 'italic',
-            letterSpacing: '-0.01em',
-          }}
-        />
+            <SectionTitle>Recent</SectionTitle>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
+              {log.map((e, i) => (
+                <LogRow key={i} entry={e} />
+              ))}
+            </div>
+
+            <SectionTitle>Note</SectionTitle>
+            <NoteField value={note} onChange={setNote} />
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+function TaskRow({ task, accent, onToggle, onRemove }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '11px 0', borderBottom: '0.5px solid rgba(255,255,255,0.08)',
+      fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 14,
+      color: task.done ? 'rgba(250,250,247,0.4)' : '#FAFAF7',
+    }}>
+      <button
+        onClick={() => onToggle(task.id)}
+        aria-label={task.done ? 'Mark not done' : 'Mark done'}
+        style={{
+          appearance: 'none', border: 0, background: 'transparent',
+          padding: 0, cursor: 'pointer', flexShrink: 0,
+          width: 18, height: 18, borderRadius: 5,
+          borderStyle: 'solid', borderWidth: '1.5px',
+          borderColor: task.done ? accent : 'rgba(255,255,255,0.3)',
+          backgroundColor: task.done ? accent : 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'all 0.15s',
+        }}
+      >
+        {task.done && (
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M2 5 4 7 8 3" stroke="#0B0B0E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
+      <span style={{
+        flex: 1, minWidth: 0,
+        textDecoration: task.done ? 'line-through' : 'none',
+        textDecorationColor: 'rgba(250,250,247,0.4)',
+        textDecorationThickness: '1px',
+      }}>{task.title}</span>
+      {onRemove && (
+        <button
+          onClick={() => onRemove(task.id)}
+          aria-label="Remove task"
+          style={{
+            appearance: 'none', border: 0, background: 'transparent',
+            color: 'rgba(250,250,247,0.35)', cursor: 'pointer',
+            padding: 4, lineHeight: 1, fontSize: 16,
+          }}
+        >×</button>
+      )}
+    </div>
+  );
+}
+
+function LogRow({ entry }) {
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '64px 1fr', gap: 14,
+      padding: '9px 0', borderBottom: '0.5px solid rgba(255,255,255,0.08)',
+      alignItems: 'baseline',
+    }}>
+      <div style={{
+        fontFamily: 'Geist Mono, ui-monospace, monospace',
+        fontSize: 11, color: 'rgba(250,250,247,0.45)',
+        fontVariantNumeric: 'tabular-nums',
+      }}>{entry.t}</div>
+      <div style={{ fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 13.5 }}>
+        {entry.text}
+      </div>
+    </div>
+  );
+}
+
+function NoteField({ value, onChange }) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      rows={4}
+      placeholder="Anything to remember this week…"
+      style={{
+        width: '100%', boxSizing: 'border-box', resize: 'none',
+        background: 'rgba(255,255,255,0.05)', color: '#FAFAF7',
+        border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 12,
+        padding: 12, outline: 'none',
+        fontFamily: '"Instrument Serif", Georgia, serif',
+        fontSize: 17, lineHeight: 1.45, fontStyle: 'italic',
+        letterSpacing: '-0.01em',
+      }}
+    />
   );
 }
 
@@ -285,21 +388,21 @@ function SectionTitle({ children }) {
   );
 }
 
-function SchoolClasses({ semesters, onChange, accent }) {
-  const [activeId, setActiveId] = React.useState(semesters[0]?.id);
+function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [newName, setNewName] = React.useState('');
   const [newCredits, setNewCredits] = React.useState('3');
   const [newGrade, setNewGrade] = React.useState('—');
 
   // If the active semester is deleted (or list is empty on mount), pick a
-  // sane fallback.
+  // sane fallback. The pick is dispatched to the parent so the weekly view
+  // can react too.
   React.useEffect(() => {
     if (semesters.length === 0) return;
     if (!semesters.find((s) => s.id === activeId)) {
-      setActiveId(semesters[0].id);
+      onSelect(semesters[0].id);
     }
-  }, [semesters, activeId]);
+  }, [semesters, activeId, onSelect]);
 
   const activeIdx = Math.max(0, semesters.findIndex((s) => s.id === activeId));
   const active = semesters[activeIdx] || semesters[0];
@@ -342,7 +445,7 @@ function SchoolClasses({ semesters, onChange, accent }) {
     // on the toggle below flips them to current/past so they count for GPA.
     const next = { id, name: `New semester ${year}`, isFuture: true, classes: [] };
     onChange([next, ...semesters]);
-    setActiveId(id);
+    onSelect(id);
     setMenuOpen(false);
   };
 
@@ -360,7 +463,7 @@ function SchoolClasses({ semesters, onChange, accent }) {
     const next = semesters.filter((s) => s.id !== id);
     onChange(next);
     if (id === activeId) {
-      setActiveId(next[0]?.id);
+      onSelect(next[0]?.id);
     }
   };
 
@@ -487,7 +590,8 @@ function SchoolClasses({ semesters, onChange, accent }) {
                   }}
                 >
                   <button
-                    onClick={() => { setActiveId(s.id); setMenuOpen(false); }}
+                    onClick={() => { onSelect(s.id); setMenuOpen(false); }}
+
                     style={{
                       appearance: 'none', border: 0, background: 'transparent',
                       color: '#FAFAF7', padding: '8px 0',
@@ -748,6 +852,309 @@ function SchoolClasses({ semesters, onChange, accent }) {
           }}
         >Add</button>
       </form>
+    </div>
+  );
+}
+
+// Weekly view: horizontal swipe (or arrows / calendar) moves between weeks;
+// each week has its own tasks, recent log, and note. Reads/writes go through
+// the props (state lives in app.jsx so it survives sheet close/reopen).
+function WeeklyView({
+  weekKey: activeKey, setWeekKey,
+  tasks, log, note,
+  onToggle, onRemove, onNoteChange,
+  accent,
+}) {
+  const weekDate = parseWeekKey(activeKey);
+  const [calendarOpen, setCalendarOpen] = React.useState(false);
+  const [dragX, setDragX] = React.useState(0);
+  const [animating, setAnimating] = React.useState(false);
+  const dragRef = React.useRef(null);
+
+  const goWeek = React.useCallback((dir) => {
+    const next = new Date(weekDate);
+    next.setDate(next.getDate() + dir * 7);
+    setWeekKey(weekKey(next));
+  }, [weekDate, setWeekKey]);
+
+  // Pointer-based horizontal swipe. We only steal the gesture once it's
+  // clearly horizontal so the vertical scroll inside the sheet still works,
+  // and we bail out entirely if the user starts inside a form control.
+  const onPointerDown = (e) => {
+    const tag = e.target.tagName;
+    if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(tag)) return;
+    dragRef.current = { sx: e.clientX, sy: e.clientY, captured: false, dx: 0 };
+  };
+  const onPointerMove = (e) => {
+    const s = dragRef.current;
+    if (!s) return;
+    const dx = e.clientX - s.sx;
+    const dy = e.clientY - s.sy;
+    if (!s.captured) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+        dragRef.current = null;
+        return;
+      }
+      if (Math.abs(dx) > 12) s.captured = true;
+    }
+    if (s.captured) {
+      s.dx = dx;
+      setDragX(dx);
+    }
+  };
+  const onPointerUp = () => {
+    const s = dragRef.current;
+    dragRef.current = null;
+    if (!s || !s.captured) { setDragX(0); return; }
+    const W = 320; // approx container width — only used as a commit threshold
+    setAnimating(true);
+    if (Math.abs(s.dx) > W * 0.22) {
+      // Drag right (positive dx) → previous week; drag left → next week.
+      goWeek(s.dx > 0 ? -1 : 1);
+    }
+    setDragX(0);
+    setTimeout(() => setAnimating(false), 240);
+  };
+
+  const start = weekDate;
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const sameMonth = start.getMonth() === end.getMonth();
+  const fmtMonth = (d) => d.toLocaleString('en-US', { month: 'short' });
+  const label = sameMonth
+    ? `${fmtMonth(start)} ${start.getDate()} – ${end.getDate()}, ${end.getFullYear()}`
+    : `${fmtMonth(start)} ${start.getDate()} – ${fmtMonth(end)} ${end.getDate()}, ${end.getFullYear()}`;
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      {/* Week header — prev / picker / next */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 8, marginBottom: 12,
+      }}>
+        <button
+          onClick={() => goWeek(-1)}
+          aria-label="Previous week"
+          style={weekNavBtn}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M7.5 2.5 4 6l3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <button
+          onClick={() => setCalendarOpen((v) => !v)}
+          style={{
+            flex: 1, appearance: 'none', border: '0.5px solid rgba(255,255,255,0.12)',
+            background: 'rgba(255,255,255,0.05)', color: '#FAFAF7',
+            padding: '10px 14px', borderRadius: 12, cursor: 'pointer',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+            fontFamily: 'Geist, ui-sans-serif, system-ui',
+          }}
+        >
+          <span style={{
+            fontFamily: 'Geist Mono, ui-monospace, monospace',
+            fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+            color: 'rgba(250,250,247,0.45)',
+          }}>Week of</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>{label}</span>
+        </button>
+        <button
+          onClick={() => goWeek(1)}
+          aria-label="Next week"
+          style={weekNavBtn}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M4.5 2.5 8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
+
+      {calendarOpen && (
+        <CalendarPicker
+          selected={weekDate}
+          onPick={(d) => { setWeekKey(weekKey(d)); setCalendarOpen(false); }}
+          onClose={() => setCalendarOpen(false)}
+          accent={accent}
+        />
+      )}
+
+      {/* Swipe container */}
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        style={{ touchAction: 'pan-y', userSelect: 'none' }}
+      >
+        <div style={{
+          transform: `translate3d(${dragX}px, 0, 0)`,
+          transition: animating ? 'transform 0.22s ease-out' : 'none',
+          opacity: 1 - Math.min(0.35, Math.abs(dragX) / 800),
+          willChange: 'transform',
+        }}>
+          <SectionTitle>Tasks · {tasks.filter((t) => !t.done).length} open</SectionTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
+            {tasks.length === 0 && (
+              <div style={{
+                color: 'rgba(250,250,247,0.4)', fontSize: 13,
+                padding: '12px 0',
+              }}>No tasks for this week. Add one above.</div>
+            )}
+            {tasks.map((t) => (
+              <TaskRow key={t.id} task={t} accent={accent} onToggle={onToggle} onRemove={onRemove} />
+            ))}
+          </div>
+
+          <SectionTitle>Recent</SectionTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
+            {log.length === 0 && (
+              <div style={{
+                color: 'rgba(250,250,247,0.35)', fontSize: 12,
+                padding: '6px 0', fontFamily: 'Geist Mono, ui-monospace, monospace',
+                letterSpacing: '0.06em',
+              }}>Nothing logged yet.</div>
+            )}
+            {log.map((e, i) => <LogRow key={i} entry={e} />)}
+          </div>
+
+          <SectionTitle>Note</SectionTitle>
+          <NoteField value={note} onChange={onNoteChange} />
+        </div>
+      </div>
+
+      {/* Hint */}
+      <div style={{
+        marginTop: 12, textAlign: 'center',
+        fontFamily: 'Geist Mono, ui-monospace, monospace',
+        fontSize: 9, letterSpacing: '0.18em', textTransform: 'uppercase',
+        color: 'rgba(250,250,247,0.3)',
+      }}>
+        ← swipe to change week →
+      </div>
+    </div>
+  );
+}
+
+const weekNavBtn = {
+  appearance: 'none', border: '0.5px solid rgba(255,255,255,0.12)',
+  background: 'rgba(255,255,255,0.05)', color: '#FAFAF7',
+  width: 36, height: 36, borderRadius: 10,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  cursor: 'pointer', padding: 0, flexShrink: 0,
+};
+
+function CalendarPicker({ selected, onPick, onClose, accent }) {
+  const [viewMonth, setViewMonth] = React.useState(
+    () => new Date(selected.getFullYear(), selected.getMonth(), 1)
+  );
+  const goMonth = (dir) => {
+    setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + dir, 1));
+  };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const selWeekStart = +startOfWeek(selected);
+
+  const firstOfMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+  const daysInMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate();
+  // Monday-first weekday for the 1st of the month: Sun=0 → 6, Mon=1 → 0, etc.
+  const startOffset = (firstOfMonth.getDay() + 6) % 7;
+
+  const cells = [];
+  for (let i = 0; i < startOffset; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  return (
+    <div style={{
+      background: '#15151A',
+      border: '0.5px solid rgba(255,255,255,0.12)',
+      borderRadius: 14, padding: 14, marginBottom: 12,
+      boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 10,
+      }}>
+        <button onClick={() => goMonth(-1)} aria-label="Previous month" style={weekNavBtn}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M7.5 2.5 4 6l3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <div style={{
+          fontFamily: '"Instrument Serif", Georgia, serif',
+          fontStyle: 'italic', fontSize: 22, color: '#FAFAF7',
+        }}>
+          {viewMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' })}
+        </div>
+        <button onClick={() => goMonth(1)} aria-label="Next month" style={weekNavBtn}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M4.5 2.5 8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2,
+        marginBottom: 6,
+        fontFamily: 'Geist Mono, ui-monospace, monospace',
+        fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+        color: 'rgba(250,250,247,0.4)',
+      }}>
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+          <div key={i} style={{ textAlign: 'center', padding: '4px 0' }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+        {cells.map((d, i) => {
+          if (d === null) return <div key={i} />;
+          const cellDate = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), d);
+          const cellWeek = +startOfWeek(cellDate);
+          const inSelectedWeek = cellWeek === selWeekStart;
+          const isToday = +cellDate === +today;
+          return (
+            <button
+              key={i}
+              onClick={() => onPick(cellDate)}
+              style={{
+                appearance: 'none', border: 0, cursor: 'pointer',
+                background: inSelectedWeek ? accent : 'transparent',
+                color: inSelectedWeek ? '#0B0B0E'
+                  : (isToday ? accent : '#FAFAF7'),
+                fontWeight: isToday ? 600 : 400,
+                fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 13,
+                fontVariantNumeric: 'tabular-nums',
+                padding: '10px 0', borderRadius: 8,
+                transition: 'background 0.15s',
+              }}
+            >
+              {d}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        marginTop: 10, gap: 8,
+      }}>
+        <button
+          onClick={() => { onPick(new Date()); }}
+          style={{
+            appearance: 'none', border: '0.5px solid rgba(255,255,255,0.12)',
+            background: 'transparent', color: '#FAFAF7',
+            padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
+            fontFamily: 'Geist Mono, ui-monospace, monospace',
+            fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+          }}
+        >This week</button>
+        <button
+          onClick={onClose}
+          style={{
+            appearance: 'none', border: 0,
+            background: 'transparent', color: 'rgba(250,250,247,0.55)',
+            padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
+            fontFamily: 'Geist Mono, ui-monospace, monospace',
+            fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+          }}
+        >Close</button>
+      </div>
     </div>
   );
 }
