@@ -13,6 +13,7 @@ function DetailView({
   peopleData, setPeopleData,
   userName, setUserName,
   sections, updateSection,
+  homeData, setHomeData,
 }) {
   const isSchool = (section.contentKey || section.id) === 'school';
   const isPerson = (section.contentKey || section.id) === 'person';
@@ -281,6 +282,8 @@ function DetailView({
             sections={sections}
             peopleData={peopleData}
             setPeopleData={setPeopleData}
+            homeData={homeData}
+            setHomeData={setHomeData}
           />
         ) : isPerson ? (
           <PersonDetails
@@ -1236,33 +1239,11 @@ function openLink(href) {
   window.open(href, '_blank', 'noopener,noreferrer');
 }
 
-function PersonDetails({ section, peopleData, setPeopleData, accent }) {
-  const data = peopleData[section.id] || {
-    phones: [], emails: [], socials: [], birthday: '', notes: '', reminders: [],
-  };
-  const [newReminder, setNewReminder] = React.useState('');
-
-  const patch = (updater) => {
-    setPeopleData((prev) => {
-      const cur = prev[section.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '', reminders: [] };
-      return { ...prev, [section.id]: updater(cur) };
-    });
-  };
-
-  const addReminder = (e) => {
-    e?.preventDefault?.();
-    const text = newReminder.trim();
-    if (!text) return;
-    patch((c) => ({ ...c, reminders: [{ id: Date.now() + Math.random(), text, done: false, createdAt: Date.now() }, ...(c.reminders || [])] }));
-    setNewReminder('');
-  };
-  const toggleReminder = (id) => {
-    patch((c) => ({ ...c, reminders: (c.reminders || []).map((r) => (r.id === id ? { ...r, done: !r.done } : r)) }));
-  };
-  const removeReminder = (id) => {
-    patch((c) => ({ ...c, reminders: (c.reminders || []).filter((r) => r.id !== id) }));
-  };
-
+// Shared contact-card block. Renders phones / emails / birthday / socials /
+// notes against any { phones, emails, socials, birthday, notes } record.
+// Used by both PersonDetails (one entry per person section) and HomeDetails
+// (your own profile).
+function ContactCard({ data, patch, accent }) {
   const fieldStyle = {
     background: 'rgba(255,255,255,0.06)',
     border: '0.5px solid rgba(255,255,255,0.12)',
@@ -1309,6 +1290,188 @@ function PersonDetails({ section, peopleData, setPeopleData, accent }) {
   const addRow = (key, seed) => patch((c) => ({ ...c, [key]: [...(c[key] || []), { id: Date.now() + Math.random(), ...seed }] }));
   const updateRow = (key, id, p) => patch((c) => ({ ...c, [key]: (c[key] || []).map((r) => (r.id === id ? { ...r, ...p } : r)) }));
   const removeRow = (key, id) => patch((c) => ({ ...c, [key]: (c[key] || []).filter((r) => r.id !== id) }));
+
+  return (
+    <React.Fragment>
+      {/* Phones — tap ↗ to launch the dialer */}
+      <div>
+        <SectionTitle>Phones</SectionTitle>
+        {(data.phones || []).map((p) => {
+          const cleaned = (p.value || '').replace(/\s+/g, '');
+          const href = cleaned ? `tel:${cleaned}` : null;
+          return (
+            <div key={p.id} style={{
+              display: 'grid', gridTemplateColumns: '90px 1fr 28px 28px',
+              gap: 8, marginBottom: 8, alignItems: 'center',
+            }}>
+              <input
+                value={p.label} placeholder="Mobile"
+                onChange={(e) => updateRow('phones', p.id, { label: e.target.value })}
+                style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
+              />
+              <input
+                type="tel" inputMode="tel"
+                value={p.value} placeholder="+1 555 0123"
+                onChange={(e) => updateRow('phones', p.id, { value: e.target.value })}
+                style={fieldStyle}
+              />
+              <button
+                onClick={() => openLink(href)} disabled={!href}
+                aria-label="Call" style={openBtnStyle(!!href)}
+              >{OpenIcon}</button>
+              <button onClick={() => removeRow('phones', p.id)} aria-label="Remove" style={xBtnStyle}>×</button>
+            </div>
+          );
+        })}
+        <button onClick={() => addRow('phones', { label: 'Mobile', value: '' })} style={addLinkStyle}>
+          + Add phone
+        </button>
+      </div>
+
+      {/* Emails — tap ↗ to open the mail client */}
+      <div>
+        <SectionTitle>Emails</SectionTitle>
+        {(data.emails || []).map((m) => {
+          const v = (m.value || '').trim();
+          const href = v ? `mailto:${v}` : null;
+          return (
+            <div key={m.id} style={{
+              display: 'grid', gridTemplateColumns: '90px 1fr 28px 28px',
+              gap: 8, marginBottom: 8, alignItems: 'center',
+            }}>
+              <input
+                value={m.label} placeholder="Personal"
+                onChange={(e) => updateRow('emails', m.id, { label: e.target.value })}
+                style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
+              />
+              <input
+                type="email" inputMode="email" autoCapitalize="off" autoCorrect="off"
+                value={m.value} placeholder="name@example.com"
+                onChange={(e) => updateRow('emails', m.id, { value: e.target.value })}
+                style={fieldStyle}
+              />
+              <button
+                onClick={() => openLink(href)} disabled={!href}
+                aria-label="Email" style={openBtnStyle(!!href)}
+              >{OpenIcon}</button>
+              <button onClick={() => removeRow('emails', m.id)} aria-label="Remove" style={xBtnStyle}>×</button>
+            </div>
+          );
+        })}
+        <button onClick={() => addRow('emails', { label: 'Personal', value: '' })} style={addLinkStyle}>
+          + Add email
+        </button>
+      </div>
+
+      {/* Birthday */}
+      <div>
+        <SectionTitle>Birthday</SectionTitle>
+        <input
+          type="date"
+          value={data.birthday || ''}
+          onChange={(e) => patch((c) => ({ ...c, birthday: e.target.value }))}
+          style={{ ...fieldStyle, width: '100%', colorScheme: 'dark' }}
+        />
+      </div>
+
+      {/* Socials — quick-add chips per platform (Twitch + YouTube included).
+          ↗ opens the platform's profile URL, which deep-links into the
+          native app on iOS when universal-link handlers are registered. */}
+      <div>
+        <SectionTitle>Social</SectionTitle>
+        {(data.socials || []).map((s) => {
+          const href = socialUrl(s.platform, s.handle);
+          return (
+            <div key={s.id} style={{
+              display: 'grid', gridTemplateColumns: '110px 1fr 28px 28px',
+              gap: 8, marginBottom: 8, alignItems: 'center',
+            }}>
+              <input
+                value={s.platform} placeholder="Instagram"
+                onChange={(e) => updateRow('socials', s.id, { platform: e.target.value })}
+                style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
+              />
+              <input
+                value={s.handle} placeholder="@handle"
+                autoCapitalize="off" autoCorrect="off"
+                onChange={(e) => updateRow('socials', s.id, { handle: e.target.value })}
+                style={fieldStyle}
+              />
+              <button
+                onClick={() => openLink(href)} disabled={!href}
+                aria-label="Open profile" style={openBtnStyle(!!href)}
+              >{OpenIcon}</button>
+              <button onClick={() => removeRow('socials', s.id)} aria-label="Remove" style={xBtnStyle}>×</button>
+            </div>
+          );
+        })}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+          {SOCIAL_PLATFORMS.map((plat) => (
+            <button
+              key={plat}
+              onClick={() => addRow('socials', { platform: plat, handle: '' })}
+              style={{
+                appearance: 'none',
+                border: '0.5px dashed rgba(255,255,255,0.18)',
+                background: 'transparent', color: accent, cursor: 'pointer',
+                padding: '6px 10px', borderRadius: 999,
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
+              }}
+            >+ {plat}</button>
+          ))}
+          <button
+            onClick={() => addRow('socials', { platform: '', handle: '' })}
+            style={{
+              appearance: 'none',
+              border: '0.5px dashed rgba(255,255,255,0.18)',
+              background: 'transparent', color: 'rgba(250,128,114,0.7)', cursor: 'pointer',
+              padding: '6px 10px', borderRadius: 999,
+              fontFamily: 'Geist Mono, ui-monospace, monospace',
+              fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
+            }}
+          >+ Other</button>
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div>
+        <SectionTitle>Notes</SectionTitle>
+        <NoteField
+          value={data.notes || ''}
+          onChange={(v) => patch((c) => ({ ...c, notes: v }))}
+        />
+      </div>
+    </React.Fragment>
+  );
+}
+
+function PersonDetails({ section, peopleData, setPeopleData, accent }) {
+  const data = peopleData[section.id] || {
+    phones: [], emails: [], socials: [], birthday: '', notes: '', reminders: [],
+  };
+  const [newReminder, setNewReminder] = React.useState('');
+
+  const patch = (updater) => {
+    setPeopleData((prev) => {
+      const cur = prev[section.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '', reminders: [] };
+      return { ...prev, [section.id]: updater(cur) };
+    });
+  };
+
+  const addReminder = (e) => {
+    e?.preventDefault?.();
+    const text = newReminder.trim();
+    if (!text) return;
+    patch((c) => ({ ...c, reminders: [{ id: Date.now() + Math.random(), text, done: false, createdAt: Date.now() }, ...(c.reminders || [])] }));
+    setNewReminder('');
+  };
+  const toggleReminder = (id) => {
+    patch((c) => ({ ...c, reminders: (c.reminders || []).map((r) => (r.id === id ? { ...r, done: !r.done } : r)) }));
+  };
+  const removeReminder = (id) => {
+    patch((c) => ({ ...c, reminders: (c.reminders || []).filter((r) => r.id !== id) }));
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -1391,166 +1554,28 @@ function PersonDetails({ section, peopleData, setPeopleData, accent }) {
         ))}
       </div>
 
-      {/* Phones — tap the ↗ to launch the dialer */}
-      <div>
-        <SectionTitle>Phones</SectionTitle>
-        {(data.phones || []).map((p) => {
-          const cleaned = (p.value || '').replace(/\s+/g, '');
-          const href = cleaned ? `tel:${cleaned}` : null;
-          return (
-            <div key={p.id} style={{
-              display: 'grid', gridTemplateColumns: '90px 1fr 28px 28px',
-              gap: 8, marginBottom: 8, alignItems: 'center',
-            }}>
-              <input
-                value={p.label} placeholder="Mobile"
-                onChange={(e) => updateRow('phones', p.id, { label: e.target.value })}
-                style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
-              />
-              <input
-                type="tel" inputMode="tel"
-                value={p.value} placeholder="+1 555 0123"
-                onChange={(e) => updateRow('phones', p.id, { value: e.target.value })}
-                style={fieldStyle}
-              />
-              <button
-                onClick={() => openLink(href)} disabled={!href}
-                aria-label="Call" style={openBtnStyle(!!href)}
-              >{OpenIcon}</button>
-              <button onClick={() => removeRow('phones', p.id)} aria-label="Remove" style={xBtnStyle}>×</button>
-            </div>
-          );
-        })}
-        <button onClick={() => addRow('phones', { label: 'Mobile', value: '' })} style={addLinkStyle}>
-          + Add phone
-        </button>
-      </div>
-
-      {/* Emails — tap the ↗ to open the mail client */}
-      <div>
-        <SectionTitle>Emails</SectionTitle>
-        {(data.emails || []).map((m) => {
-          const v = (m.value || '').trim();
-          const href = v ? `mailto:${v}` : null;
-          return (
-            <div key={m.id} style={{
-              display: 'grid', gridTemplateColumns: '90px 1fr 28px 28px',
-              gap: 8, marginBottom: 8, alignItems: 'center',
-            }}>
-              <input
-                value={m.label} placeholder="Personal"
-                onChange={(e) => updateRow('emails', m.id, { label: e.target.value })}
-                style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
-              />
-              <input
-                type="email" inputMode="email" autoCapitalize="off" autoCorrect="off"
-                value={m.value} placeholder="name@example.com"
-                onChange={(e) => updateRow('emails', m.id, { value: e.target.value })}
-                style={fieldStyle}
-              />
-              <button
-                onClick={() => openLink(href)} disabled={!href}
-                aria-label="Email" style={openBtnStyle(!!href)}
-              >{OpenIcon}</button>
-              <button onClick={() => removeRow('emails', m.id)} aria-label="Remove" style={xBtnStyle}>×</button>
-            </div>
-          );
-        })}
-        <button onClick={() => addRow('emails', { label: 'Personal', value: '' })} style={addLinkStyle}>
-          + Add email
-        </button>
-      </div>
-
-      {/* Birthday */}
-      <div>
-        <SectionTitle>Birthday</SectionTitle>
-        <input
-          type="date"
-          value={data.birthday || ''}
-          onChange={(e) => patch((c) => ({ ...c, birthday: e.target.value }))}
-          style={{ ...fieldStyle, width: '100%', colorScheme: 'dark' }}
-        />
-      </div>
-
-      {/* Socials — quick-add chips per platform (Twitch & YouTube included),
-          and ↗ opens the platform's profile URL (deep-links to the native
-          app on iOS when the universal-link handler is registered). */}
-      <div>
-        <SectionTitle>Social</SectionTitle>
-        {(data.socials || []).map((s) => {
-          const href = socialUrl(s.platform, s.handle);
-          return (
-            <div key={s.id} style={{
-              display: 'grid', gridTemplateColumns: '110px 1fr 28px 28px',
-              gap: 8, marginBottom: 8, alignItems: 'center',
-            }}>
-              <input
-                value={s.platform} placeholder="Instagram"
-                onChange={(e) => updateRow('socials', s.id, { platform: e.target.value })}
-                style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
-              />
-              <input
-                value={s.handle} placeholder="@handle"
-                autoCapitalize="off" autoCorrect="off"
-                onChange={(e) => updateRow('socials', s.id, { handle: e.target.value })}
-                style={fieldStyle}
-              />
-              <button
-                onClick={() => openLink(href)} disabled={!href}
-                aria-label="Open profile" style={openBtnStyle(!!href)}
-              >{OpenIcon}</button>
-              <button onClick={() => removeRow('socials', s.id)} aria-label="Remove" style={xBtnStyle}>×</button>
-            </div>
-          );
-        })}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-          {SOCIAL_PLATFORMS.map((plat) => (
-            <button
-              key={plat}
-              onClick={() => addRow('socials', { platform: plat, handle: '' })}
-              style={{
-                appearance: 'none',
-                border: '0.5px dashed rgba(255,255,255,0.18)',
-                background: 'transparent', color: accent, cursor: 'pointer',
-                padding: '6px 10px', borderRadius: 999,
-                fontFamily: 'Geist Mono, ui-monospace, monospace',
-                fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
-              }}
-            >+ {plat}</button>
-          ))}
-          <button
-            onClick={() => addRow('socials', { platform: '', handle: '' })}
-            style={{
-              appearance: 'none',
-              border: '0.5px dashed rgba(255,255,255,0.18)',
-              background: 'transparent', color: 'rgba(250,128,114,0.7)', cursor: 'pointer',
-              padding: '6px 10px', borderRadius: 999,
-              fontFamily: 'Geist Mono, ui-monospace, monospace',
-              fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
-            }}
-          >+ Other</button>
-        </div>
-      </div>
-
-      {/* Notes */}
-      <div>
-        <SectionTitle>Notes</SectionTitle>
-        <NoteField
-          value={data.notes || ''}
-          onChange={(v) => patch((c) => ({ ...c, notes: v }))}
-        />
-      </div>
-
+      {/* Contact card — phones, emails, birthday, socials, notes. */}
+      <ContactCard data={data} patch={patch} accent={accent} />
     </div>
   );
 }
 
 // Home / welcome section. The brief panel and detail headline read
 // "Welcome <first name>" (with the first name accent-colored). This editor
-// changes that name and surfaces every open person-reminder across the wheel
-// — they sit at the top until checked off, at which point they drop out of
-// the home feed but stay in the source person's reminders list.
-function HomeDetails({ userName, setUserName, accent, sections, peopleData, setPeopleData }) {
+// changes that name, surfaces every open person-reminder across the wheel
+// (they sit at the top until checked off), and lets the user fill in their
+// own contact card — phones, emails, birthday, socials, notes — that they
+// can tap to launch.
+function HomeDetails({
+  userName, setUserName, accent,
+  sections, peopleData, setPeopleData,
+  homeData, setHomeData,
+}) {
+  const homePatch = React.useCallback((updater) => {
+    setHomeData((prev) => updater(prev || { phones: [], emails: [], socials: [], birthday: '', notes: '' }));
+  }, [setHomeData]);
+
+  const safeHome = homeData || { phones: [], emails: [], socials: [], birthday: '', notes: '' };
   // Collect open reminders across every person section so the user sees them
   // in one place on Home. Each entry remembers which person it came from so
   // toggling done writes back to the right people-data bucket.
@@ -1662,26 +1687,10 @@ function HomeDetails({ userName, setUserName, accent, sections, peopleData, setP
         </div>
       </div>
 
-      <div style={{
-        background: 'rgba(255,255,255,0.04)',
-        border: '0.5px solid rgba(255,255,255,0.08)',
-        borderRadius: 14, padding: '16px 18px',
-      }}>
-        <div style={{
-          fontFamily: '"Instrument Serif", Georgia, serif', fontStyle: 'italic',
-          fontSize: 22, color: FG_PINK, marginBottom: 6,
-        }}>
-          Make it yours.
-        </div>
-        <div style={{
-          fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 13.5,
-          color: 'rgba(250,128,114,0.65)', lineHeight: 1.5,
-        }}>
-          Open Settings (gear, top-right) to add new sections — work, classes,
-          people — reorder the dial, change accent or typeface, or upload custom
-          icons. Swipe the dial below to navigate between sections.
-        </div>
-      </div>
+      {/* Your contact card — same shape as a person section, except it's
+          yours. Phones, emails, birthday, socials, and notes all tap-through
+          to the appropriate app via the ↗ buttons. */}
+      <ContactCard data={safeHome} patch={homePatch} accent={accent} />
     </div>
   );
 }

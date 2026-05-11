@@ -166,9 +166,15 @@ function App() {
     }
   );
 
-  // People sections — { [sectionId]: { phones, emails, birthday, notes, socials } }.
+  // People sections — { [sectionId]: { phones, emails, birthday, notes, socials, reminders } }.
   // Keys are the section id (one entry per "person" section on the wheel).
   const [peopleData, setPeopleData] = usePersistedState('swiped.people', () => ({}));
+
+  // Your own contact card — phones, emails, birthday, socials, notes for the
+  // Home section. Persisted as a single object (there's only one of you).
+  const [homeData, setHomeData] = usePersistedState('swiped.home', () => ({
+    phones: [], emails: [], socials: [], birthday: '', notes: '',
+  }));
 
   // Mutate the currently-selected section (used by PersonDetails so people
   // can rename + change avatar inline without going to Settings).
@@ -190,11 +196,12 @@ function App() {
   };
 
   // Wipe every persisted section field back to the seed defaults — school
-  // (semesters / classes / weekly tasks / notes) and people (contacts).
-  // Behind a confirm so it's not accidentally tappable.
+  // (semesters / classes / weekly tasks / notes), people (contacts), and
+  // your own home contact card. Behind a confirm so it's not accidentally
+  // tappable.
   const resetSchoolData = () => {
     const ok = typeof window !== 'undefined' && window.confirm(
-      'Reset section data? This clears your semesters, classes, weekly tasks, notes, and person contacts.'
+      'Reset section data? This clears your semesters, classes, weekly tasks, notes, person contacts, and your home contact card.'
     );
     if (!ok) return;
     try {
@@ -203,6 +210,7 @@ function App() {
       localStorage.removeItem('swiped.school.weeks');
       localStorage.removeItem('swiped.school.activeWeekKey');
       localStorage.removeItem('swiped.people');
+      localStorage.removeItem('swiped.home');
     } catch (e) { /* ignore */ }
     const seedSemesters = SECTION_LIB.school.semesters;
     const seedSem = seedSemesters[0];
@@ -219,6 +227,7 @@ function App() {
     });
     setSchoolActiveWeekKey(seedKey);
     setPeopleData({});
+    setHomeData({ phones: [], emails: [], socials: [], birthday: '', notes: '' });
   };
 
   // Sheet gesture state. `finger` is the live (or last) pointer position;
@@ -610,6 +619,8 @@ function App() {
               setUserName={(v) => setTweak('userName', v)}
               sections={sections}
               updateSection={updateSelectedSection}
+              homeData={homeData}
+              setHomeData={setHomeData}
             />
           </div>
         </div>
