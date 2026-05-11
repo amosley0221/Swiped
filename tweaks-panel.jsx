@@ -157,23 +157,54 @@ const __TWEAKS_STYLE = `
 `;
 
 // ── useTweaks ───────────────────────────────────────────────────────────────
-// Single source of truth for tweak values. setTweak persists via the host
-// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+// Single source of truth for tweak values. setTweak persists via:
+//   1. localStorage (so changes survive the user closing the PWA / browser
+//      / surviving redeploys, since the storage is tied to the origin).
+//   2. The Claude Design host (__edit_mode_set_keys), which rewrites the
+//      EDITMODE block on disk during in-editor sessions. No-op in prod.
+const TWEAKS_LS_KEY = 'swiped.tweaks';
 function useTweaks(defaults) {
-  const [values, setValues] = React.useState(defaults);
+  const [values, setValues] = React.useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(TWEAKS_LS_KEY) || 'null');
+      return stored && typeof stored === 'object' ? { ...defaults, ...stored } : defaults;
+    } catch (e) { return defaults; }
+  });
   // Accepts either setTweak('key', value) or setTweak({ key: value, ... }) so a
   // useState-style call doesn't write a "[object Object]" key into the persisted
   // JSON block.
   const setTweak = React.useCallback((keyOrEdits, val) => {
     const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
       ? keyOrEdits : { [keyOrEdits]: val };
-    setValues((prev) => ({ ...prev, ...edits }));
-    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+    setValues((prev) => {
+      const next = { ...prev, ...edits };
+      try { localStorage.setItem(TWEAKS_LS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+    try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*'); } catch {}
     // Same-window signal so in-page listeners (deck-stage rail thumbnails)
     // can react — the parent message only reaches the host, not peers.
     window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
   }, []);
   return [values, setTweak];
+}
+
+// Generic localStorage-backed state. Used for the school section so semesters,
+// classes, per-week tasks/notes and the active selection survive close/reopen.
+function usePersistedState(key, initial) {
+  const [val, setVal] = React.useState(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw == null) return typeof initial === 'function' ? initial() : initial;
+      return JSON.parse(raw);
+    } catch (e) {
+      return typeof initial === 'function' ? initial() : initial;
+    }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+  }, [key, val]);
+  return [val, setVal];
 }
 
 // ── TweaksPanel ─────────────────────────────────────────────────────────────
@@ -562,7 +593,7 @@ function TweakButton({ label, onClick, secondary = false }) {
 }
 
 Object.assign(window, {
-  useTweaks, TweaksPanel, TweakSection, TweakRow,
+  useTweaks, usePersistedState, TweaksPanel, TweakSection, TweakRow,
   TweakSlider, TweakToggle, TweakRadio, TweakSelect,
   TweakText, TweakNumber, TweakColor, TweakButton,
 });

@@ -2,7 +2,7 @@
 // owns gesture state, currentIdx (with snap inertia), liquid progress.
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "accent": "#3B6EFF",
+  "accent": "#4FA862",
   "wheelSize": 280,
   "wheelSpacing": 26,
   "liquid": "paint",
@@ -104,34 +104,39 @@ function App() {
   const [targetIdx, setTargetIdx] = React.useState(0);
   const [idx, setIdxDirect] = useTweenIndex(targetIdx);
 
-  // Lifted so the brief panel's GPA stat and the detail's class tracker stay
-  // in sync. In-memory only for the prototype — same pattern as tasks/log.
-  const [schoolSemesters, setSchoolSemesters] = React.useState(
+  // All persisted to localStorage so semesters, classes, per-week
+  // tasks/notes and the active selection survive closing the PWA, switching
+  // sections, and developer redeploys.
+  const [schoolSemesters, setSchoolSemesters] = usePersistedState(
+    'swiped.school.semesters',
     () => SECTION_LIB.school.semesters
   );
-  const [schoolActiveSemesterId, setSchoolActiveSemesterId] = React.useState(
+  const [schoolActiveSemesterId, setSchoolActiveSemesterId] = usePersistedState(
+    'swiped.school.activeSemesterId',
     () => SECTION_LIB.school.semesters[0]?.id
   );
-
-  // Per-week tasks/log/note storage for the school section. Keys are the
-  // Monday of each week (ISO date). Seeded with the default-week entry so
-  // the prototype's sample tasks show up when the user first opens school.
-  const [schoolWeeks, setSchoolWeeks] = React.useState(() => {
-    const defaultSem = SECTION_LIB.school.semesters[0];
-    const defaultDate = (defaultSem && semesterDefaultWeek(defaultSem.name)) || new Date();
-    return {
-      [weekKey(defaultDate)]: {
-        tasks: SECTION_LIB.school.tasks,
-        log: SECTION_LIB.school.log,
-        note: SECTION_LIB.school.note,
-      },
-    };
-  });
-  const [schoolActiveWeekKey, setSchoolActiveWeekKey] = React.useState(() => {
-    const defaultSem = SECTION_LIB.school.semesters[0];
-    const defaultDate = (defaultSem && semesterDefaultWeek(defaultSem.name)) || new Date();
-    return weekKey(defaultDate);
-  });
+  const [schoolWeeks, setSchoolWeeks] = usePersistedState(
+    'swiped.school.weeks',
+    () => {
+      const defaultSem = SECTION_LIB.school.semesters[0];
+      const defaultDate = (defaultSem && semesterDefaultWeek(defaultSem.name)) || new Date();
+      return {
+        [weekKey(defaultDate)]: {
+          tasks: SECTION_LIB.school.tasks,
+          log: SECTION_LIB.school.log,
+          note: SECTION_LIB.school.note,
+        },
+      };
+    }
+  );
+  const [schoolActiveWeekKey, setSchoolActiveWeekKey] = usePersistedState(
+    'swiped.school.activeWeekKey',
+    () => {
+      const defaultSem = SECTION_LIB.school.semesters[0];
+      const defaultDate = (defaultSem && semesterDefaultWeek(defaultSem.name)) || new Date();
+      return weekKey(defaultDate);
+    }
+  );
 
   // Picking a semester also jumps the weekly view to that semester's default
   // week (first week of Jan/Jun/Aug). User can still navigate freely afterward.
@@ -488,7 +493,7 @@ function App() {
           <TweakColor
             label="Accent"
             value={t.accent}
-            options={['#3B6EFF', '#FF5A1F', '#4FA862', '#E8C547', '#0B0B0E']}
+            options={['#4FA862', '#3B6EFF', '#FF5A1F', '#E8C547', '#0B0B0E']}
             onChange={(v) => setTweak('accent', v)}
           />
           <TweakRadio

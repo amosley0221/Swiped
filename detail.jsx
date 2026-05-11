@@ -1,8 +1,9 @@
 // detail.jsx — Full detail view that appears after liquid swipe-up.
-// Black background, white text. Quick-add, stats, tasks, log, note.
-// Per-section extension: when the school section is open we also render the
-// SchoolClasses GPA tracker (semester dropdown + class list + computed GPA).
-// GPA math + grade tables live in sections.jsx and are reused here.
+// Black background, salmon-pink text. Icons and the semester-picker GPA
+// stay white so they read as accents on top of the salmon copy.
+
+const FG_PINK = '#FA8072';   // salmon — primary text inside the detail view
+const FG_WHITE = '#FAFAF7';  // explicit white for icons + GPA chip
 
 function DetailView({
   section, content, accent, onClose, onCloseDragStart, visible, progress = 1,
@@ -108,7 +109,7 @@ function DetailView({
         pointerEvents: visible ? 'auto' : 'none',
         opacity: contentOpacity,
         transition: visible ? 'opacity 0.18s ease-out' : 'none',
-        color: '#FAFAF7',
+        color: FG_PINK,
         display: 'flex',
         flexDirection: 'column',
         padding: '20px 24px 90px',
@@ -143,7 +144,7 @@ function DetailView({
           aria-label="Close (drag down)"
           style={{
             appearance: 'none', border: 0, background: 'rgba(255,255,255,0.08)',
-            color: '#FAFAF7', width: 34, height: 34, borderRadius: '50%',
+            color: FG_PINK, width: 34, height: 34, borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'grab', touchAction: 'none',
           }}
@@ -155,7 +156,7 @@ function DetailView({
         <div style={{
           fontFamily: 'Geist Mono, ui-monospace, monospace',
           fontSize: 10.5, letterSpacing: '0.18em', textTransform: 'uppercase',
-          color: 'rgba(250,250,247,0.5)',
+          color: 'rgba(250,128,114,0.5)',
         }}>
           {section.name}
         </div>
@@ -164,7 +165,7 @@ function DetailView({
 
       {/* Headline */}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: 22 }}>
-        <div style={{ width: 32, height: 32, color: accent }}>
+        <div style={{ width: 32, height: 32, color: FG_WHITE }}>
           {section.iconData
             ? <img src={section.iconData} alt="" style={{ width: 32, height: 32, objectFit: 'contain' }} />
             : (Icon[section.iconKey] || Icon.target)}
@@ -198,7 +199,7 @@ function DetailView({
           placeholder={isSchool ? 'Quick add to this week…' : 'Quick add to this section…'}
           style={{
             flex: 1, background: 'transparent', border: 0, outline: 'none',
-            color: '#FAFAF7', fontFamily: 'Geist, ui-sans-serif, system-ui',
+            color: FG_PINK, fontFamily: 'Geist, ui-sans-serif, system-ui',
             fontSize: 14, padding: 0,
           }}
         />
@@ -227,7 +228,7 @@ function DetailView({
             <div style={{
               fontFamily: 'Geist Mono, ui-monospace, monospace',
               fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
-              color: 'rgba(250,250,247,0.45)',
+              color: 'rgba(250,128,114,0.45)',
             }}>{s.label}</div>
             <div style={{
               fontFamily: 'Geist, ui-sans-serif, system-ui',
@@ -293,7 +294,7 @@ function TaskRow({ task, accent, onToggle, onRemove }) {
       display: 'flex', alignItems: 'center', gap: 12,
       padding: '11px 0', borderBottom: '0.5px solid rgba(255,255,255,0.08)',
       fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 14,
-      color: task.done ? 'rgba(250,250,247,0.4)' : '#FAFAF7',
+      color: task.done ? 'rgba(250,128,114,0.4)' : '#FAFAF7',
     }}>
       <button
         onClick={() => onToggle(task.id)}
@@ -318,7 +319,7 @@ function TaskRow({ task, accent, onToggle, onRemove }) {
       <span style={{
         flex: 1, minWidth: 0,
         textDecoration: task.done ? 'line-through' : 'none',
-        textDecorationColor: 'rgba(250,250,247,0.4)',
+        textDecorationColor: 'rgba(250,128,114,0.4)',
         textDecorationThickness: '1px',
       }}>{task.title}</span>
       {onRemove && (
@@ -327,7 +328,7 @@ function TaskRow({ task, accent, onToggle, onRemove }) {
           aria-label="Remove task"
           style={{
             appearance: 'none', border: 0, background: 'transparent',
-            color: 'rgba(250,250,247,0.35)', cursor: 'pointer',
+            color: 'rgba(250,128,114,0.35)', cursor: 'pointer',
             padding: 4, lineHeight: 1, fontSize: 16,
           }}
         >×</button>
@@ -345,7 +346,7 @@ function LogRow({ entry }) {
     }}>
       <div style={{
         fontFamily: 'Geist Mono, ui-monospace, monospace',
-        fontSize: 11, color: 'rgba(250,250,247,0.45)',
+        fontSize: 11, color: 'rgba(250,128,114,0.45)',
         fontVariantNumeric: 'tabular-nums',
       }}>{entry.t}</div>
       <div style={{ fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 13.5 }}>
@@ -364,7 +365,7 @@ function NoteField({ value, onChange }) {
       placeholder="Anything to remember this week…"
       style={{
         width: '100%', boxSizing: 'border-box', resize: 'none',
-        background: 'rgba(255,255,255,0.05)', color: '#FAFAF7',
+        background: 'rgba(255,255,255,0.05)', color: FG_PINK,
         border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 12,
         padding: 12, outline: 'none',
         fontFamily: '"Instrument Serif", Georgia, serif',
@@ -380,7 +381,7 @@ function SectionTitle({ children }) {
     <div style={{
       fontFamily: 'Geist Mono, ui-monospace, monospace',
       fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
-      color: 'rgba(250,250,247,0.45)',
+      color: 'rgba(250,128,114,0.45)',
       marginBottom: 10, marginTop: 2,
     }}>
       {children}
@@ -479,7 +480,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
   const fieldStyle = {
     background: 'rgba(255,255,255,0.06)',
     border: '0.5px solid rgba(255,255,255,0.12)',
-    color: '#FAFAF7',
+    color: FG_PINK,
     borderRadius: 8,
     padding: '8px 10px',
     outline: 'none',
@@ -491,7 +492,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
     appearance: 'none', border: 0, background: 'transparent',
     width: 26, height: 26, borderRadius: 6,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    color: disabled ? 'rgba(250,250,247,0.18)' : 'rgba(250,250,247,0.55)',
+    color: disabled ? 'rgba(250,128,114,0.18)' : 'rgba(250,128,114,0.55)',
     cursor: disabled ? 'default' : 'pointer',
     padding: 0,
   });
@@ -509,12 +510,12 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
             display: 'flex', gap: 14, alignItems: 'baseline',
             fontFamily: 'Geist Mono, ui-monospace, monospace',
             fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
-            color: 'rgba(250,250,247,0.45)',
+            color: 'rgba(250,128,114,0.45)',
           }}
         >
           <span>
             Cum through&nbsp;
-            <span style={{ color: '#FAFAF7', fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ color: FG_PINK, fontVariantNumeric: 'tabular-nums' }}>
               {cumGPA.gpa == null ? '—' : cumGPA.gpa.toFixed(2)}
             </span>
           </span>
@@ -527,7 +528,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
           onClick={() => setMenuOpen((v) => !v)}
           style={{
             appearance: 'none', border: '0.5px solid rgba(255,255,255,0.12)',
-            background: 'rgba(255,255,255,0.05)', color: '#FAFAF7',
+            background: 'rgba(255,255,255,0.05)', color: FG_PINK,
             width: '100%', padding: '12px 14px', borderRadius: 12,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             cursor: 'pointer', textAlign: 'left',
@@ -538,7 +539,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
             <span style={{
               fontFamily: 'Geist Mono, ui-monospace, monospace',
               fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
-              color: 'rgba(250,250,247,0.45)',
+              color: 'rgba(250,128,114,0.45)',
             }}>Semester</span>
             <span style={{ fontSize: 16, fontWeight: 500 }}>{active?.name || '—'}</span>
           </span>
@@ -553,7 +554,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
             ) : (
               <span style={{
                 fontFamily: 'Geist Mono, ui-monospace, monospace',
-                fontSize: 18, fontWeight: 500, color: accent,
+                fontSize: 18, fontWeight: 500, color: FG_WHITE,
                 fontVariantNumeric: 'tabular-nums',
               }}>
                 {semGPA.gpa == null ? '—' : semGPA.gpa.toFixed(2)}
@@ -594,7 +595,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
 
                     style={{
                       appearance: 'none', border: 0, background: 'transparent',
-                      color: '#FAFAF7', padding: '8px 0',
+                      color: FG_PINK, padding: '8px 0',
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       cursor: 'pointer', textAlign: 'left', gap: 10,
                       fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 14,
@@ -607,7 +608,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
                       }} />
                       <span style={{
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        color: s.isFuture ? 'rgba(250,250,247,0.65)' : '#FAFAF7',
+                        color: s.isFuture ? 'rgba(250,128,114,0.65)' : '#FAFAF7',
                         fontStyle: s.isFuture ? 'italic' : 'normal',
                       }}>{s.name}</span>
                       {s.isFuture && (
@@ -623,7 +624,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
                     <span style={{
                       fontFamily: 'Geist Mono, ui-monospace, monospace',
                       fontSize: 12, fontVariantNumeric: 'tabular-nums',
-                      color: s.isFuture ? 'rgba(250,250,247,0.3)' : 'rgba(250,250,247,0.55)',
+                      color: s.isFuture ? 'rgba(250,128,114,0.3)' : 'rgba(250,128,114,0.55)',
                     }}>
                       {s.isFuture ? '—' : (g.gpa == null ? '—' : g.gpa.toFixed(2))}
                     </span>
@@ -653,7 +654,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
                     aria-label="Delete semester"
                     style={{
                       ...iconBtn(false),
-                      color: 'rgba(250,250,247,0.45)',
+                      color: 'rgba(250,128,114,0.45)',
                     }}
                   >
                     <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
@@ -693,7 +694,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
             flex: 1, minWidth: 0,
             fontStyle: 'italic',
             fontFamily: '"Instrument Serif", Georgia, serif',
-            fontSize: 18, color: '#FAFAF7',
+            fontSize: 18, color: FG_PINK,
             background: 'transparent', border: 0, outline: 'none',
             padding: '4px 0',
           }}
@@ -709,13 +710,13 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
             fontFamily: 'Geist Mono, ui-monospace, monospace',
             fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase',
             background: active?.isFuture ? accent : 'transparent',
-            color: active?.isFuture ? '#0B0B0E' : 'rgba(250,250,247,0.55)',
+            color: active?.isFuture ? '#0B0B0E' : 'rgba(250,128,114,0.55)',
             border: active?.isFuture ? `0.5px solid ${accent}` : '0.5px solid rgba(255,255,255,0.15)',
           }}
         >
           <span style={{
             width: 6, height: 6, borderRadius: '50%',
-            background: active?.isFuture ? '#0B0B0E' : 'rgba(250,250,247,0.35)',
+            background: active?.isFuture ? '#0B0B0E' : 'rgba(250,128,114,0.35)',
           }} />
           Future
         </button>
@@ -725,7 +726,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
         {(active?.classes || []).length === 0 && (
           <div style={{
-            color: 'rgba(250,250,247,0.4)', fontSize: 13,
+            color: 'rgba(250,128,114,0.4)', fontSize: 13,
             padding: '12px 0',
           }}>
             No classes yet. Add one below.
@@ -745,7 +746,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
               onChange={(e) => updateClass(c.id, { name: e.target.value })}
               style={{
                 background: 'transparent', border: 0, outline: 'none',
-                color: '#FAFAF7', fontSize: 14,
+                color: FG_PINK, fontSize: 14,
                 fontFamily: 'Geist, ui-sans-serif, system-ui',
                 minWidth: 0,
               }}
@@ -756,7 +757,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
               onChange={(e) => updateClass(c.id, { credits: Math.max(0, Math.min(12, Number(e.target.value) || 0)) })}
               style={{
                 background: 'transparent', border: 0, outline: 'none',
-                color: '#FAFAF7', fontSize: 13, textAlign: 'right',
+                color: FG_PINK, fontSize: 13, textAlign: 'right',
                 fontFamily: 'Geist Mono, ui-monospace, monospace',
                 fontVariantNumeric: 'tabular-nums',
                 minWidth: 0,
@@ -767,7 +768,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
               onChange={(e) => updateClass(c.id, { grade: e.target.value })}
               style={{
                 appearance: 'none', WebkitAppearance: 'none',
-                background: 'rgba(255,255,255,0.08)', color: '#FAFAF7',
+                background: 'rgba(255,255,255,0.08)', color: FG_PINK,
                 border: '0.5px solid rgba(255,255,255,0.1)',
                 borderRadius: 8, padding: '6px 8px',
                 fontFamily: 'Geist Mono, ui-monospace, monospace',
@@ -783,7 +784,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
               aria-label="Remove class"
               style={{
                 appearance: 'none', border: 0, background: 'transparent',
-                color: 'rgba(250,250,247,0.4)', cursor: 'pointer',
+                color: 'rgba(250,128,114,0.4)', cursor: 'pointer',
                 padding: 0, fontSize: 16, lineHeight: 1,
               }}
             >×</button>
@@ -796,7 +797,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
         display: 'flex', justifyContent: 'space-between',
         fontFamily: 'Geist Mono, ui-monospace, monospace',
         fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
-        color: 'rgba(250,250,247,0.45)',
+        color: 'rgba(250,128,114,0.45)',
         marginBottom: 16,
       }}>
         <span>{(active?.classes || []).length} classes · {(active?.classes || []).reduce((n, c) => n + (Number(c.credits) || 0), 0)} credits</span>
@@ -844,7 +845,7 @@ function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
           style={{
             appearance: 'none', border: 0, padding: '0 14px',
             background: newName.trim() ? accent : 'rgba(255,255,255,0.08)',
-            color: newName.trim() ? '#0B0B0E' : 'rgba(250,250,247,0.4)',
+            color: newName.trim() ? '#0B0B0E' : 'rgba(250,128,114,0.4)',
             fontFamily: 'Geist Mono, ui-monospace, monospace',
             fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
             borderRadius: 8, fontWeight: 600,
@@ -945,7 +946,7 @@ function WeeklyView({
           onClick={() => setCalendarOpen((v) => !v)}
           style={{
             flex: 1, appearance: 'none', border: '0.5px solid rgba(255,255,255,0.12)',
-            background: 'rgba(255,255,255,0.05)', color: '#FAFAF7',
+            background: 'rgba(255,255,255,0.05)', color: FG_PINK,
             padding: '10px 14px', borderRadius: 12, cursor: 'pointer',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
             fontFamily: 'Geist, ui-sans-serif, system-ui',
@@ -954,7 +955,7 @@ function WeeklyView({
           <span style={{
             fontFamily: 'Geist Mono, ui-monospace, monospace',
             fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
-            color: 'rgba(250,250,247,0.45)',
+            color: 'rgba(250,128,114,0.45)',
           }}>Week of</span>
           <span style={{ fontSize: 14, fontWeight: 500 }}>{label}</span>
         </button>
@@ -996,7 +997,7 @@ function WeeklyView({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
             {tasks.length === 0 && (
               <div style={{
-                color: 'rgba(250,250,247,0.4)', fontSize: 13,
+                color: 'rgba(250,128,114,0.4)', fontSize: 13,
                 padding: '12px 0',
               }}>No tasks for this week. Add one above.</div>
             )}
@@ -1009,7 +1010,7 @@ function WeeklyView({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
             {log.length === 0 && (
               <div style={{
-                color: 'rgba(250,250,247,0.35)', fontSize: 12,
+                color: 'rgba(250,128,114,0.35)', fontSize: 12,
                 padding: '6px 0', fontFamily: 'Geist Mono, ui-monospace, monospace',
                 letterSpacing: '0.06em',
               }}>Nothing logged yet.</div>
@@ -1027,7 +1028,7 @@ function WeeklyView({
         marginTop: 12, textAlign: 'center',
         fontFamily: 'Geist Mono, ui-monospace, monospace',
         fontSize: 9, letterSpacing: '0.18em', textTransform: 'uppercase',
-        color: 'rgba(250,250,247,0.3)',
+        color: 'rgba(250,128,114,0.3)',
       }}>
         ← swipe to change week →
       </div>
@@ -1037,7 +1038,7 @@ function WeeklyView({
 
 const weekNavBtn = {
   appearance: 'none', border: '0.5px solid rgba(255,255,255,0.12)',
-  background: 'rgba(255,255,255,0.05)', color: '#FAFAF7',
+  background: 'rgba(255,255,255,0.05)', color: FG_PINK,
   width: 36, height: 36, borderRadius: 10,
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   cursor: 'pointer', padding: 0, flexShrink: 0,
@@ -1081,7 +1082,7 @@ function CalendarPicker({ selected, onPick, onClose, accent }) {
         </button>
         <div style={{
           fontFamily: '"Instrument Serif", Georgia, serif',
-          fontStyle: 'italic', fontSize: 22, color: '#FAFAF7',
+          fontStyle: 'italic', fontSize: 22, color: FG_PINK,
         }}>
           {viewMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' })}
         </div>
@@ -1096,7 +1097,7 @@ function CalendarPicker({ selected, onPick, onClose, accent }) {
         marginBottom: 6,
         fontFamily: 'Geist Mono, ui-monospace, monospace',
         fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
-        color: 'rgba(250,250,247,0.4)',
+        color: 'rgba(250,128,114,0.4)',
       }}>
         {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
           <div key={i} style={{ textAlign: 'center', padding: '4px 0' }}>{d}</div>
@@ -1117,7 +1118,7 @@ function CalendarPicker({ selected, onPick, onClose, accent }) {
                 appearance: 'none', border: 0, cursor: 'pointer',
                 background: inSelectedWeek ? accent : 'transparent',
                 color: inSelectedWeek ? '#0B0B0E'
-                  : (isToday ? accent : '#FAFAF7'),
+                  : (isToday ? accent : FG_PINK),
                 fontWeight: isToday ? 600 : 400,
                 fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 13,
                 fontVariantNumeric: 'tabular-nums',
@@ -1138,7 +1139,7 @@ function CalendarPicker({ selected, onPick, onClose, accent }) {
           onClick={() => { onPick(new Date()); }}
           style={{
             appearance: 'none', border: '0.5px solid rgba(255,255,255,0.12)',
-            background: 'transparent', color: '#FAFAF7',
+            background: 'transparent', color: FG_PINK,
             padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
             fontFamily: 'Geist Mono, ui-monospace, monospace',
             fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
@@ -1148,7 +1149,7 @@ function CalendarPicker({ selected, onPick, onClose, accent }) {
           onClick={onClose}
           style={{
             appearance: 'none', border: 0,
-            background: 'transparent', color: 'rgba(250,250,247,0.55)',
+            background: 'transparent', color: 'rgba(250,128,114,0.55)',
             padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
             fontFamily: 'Geist Mono, ui-monospace, monospace',
             fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',

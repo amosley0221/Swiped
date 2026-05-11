@@ -66,9 +66,10 @@ function Wheel({
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       if (mode === 'rotate') {
-        // fling + snap
-        const projected = indexRef.current + velocity * 0.18;
-        const snapped = Math.max(0, Math.min(sections.length - 1, Math.round(projected)));
+        // Snap to whichever section is closest to where the user let go, no
+        // velocity projection — that way the section lines up under the blue
+        // selection tick instead of overshooting on a hard flick.
+        const snapped = Math.max(0, Math.min(sections.length - 1, Math.round(indexRef.current)));
         onSettle(snapped);
       }
     };
