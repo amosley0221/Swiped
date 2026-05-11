@@ -600,6 +600,37 @@ function App() {
         MozOsxFontSmoothing: 'grayscale',
       }}
     >
+      {/* DEBUG — viewport diagnostic. Reads whatever Chrome / the OS is
+          reporting on this device so we can see why the Fold cover screen
+          ends up scrunched. Remove once layout is sorted. */}
+      <div style={{
+        position: 'fixed', top: 4, left: 4,
+        fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 10,
+        lineHeight: 1.25,
+        color: 'rgba(11,11,14,0.75)',
+        background: 'rgba(255,255,255,0.85)',
+        border: '0.5px solid rgba(11,11,14,0.15)',
+        borderRadius: 6, padding: '4px 6px',
+        pointerEvents: 'none', zIndex: 999,
+        whiteSpace: 'pre',
+      }}>
+        {(() => {
+          const vv = (typeof window !== 'undefined') ? window.visualViewport : null;
+          const ce = (typeof document !== 'undefined') ? document.documentElement : null;
+          const sc = (typeof window !== 'undefined') ? window.screen : null;
+          return [
+            `useViewport ${vw}×${vh}`,
+            `innerWxH    ${typeof window !== 'undefined' ? window.innerWidth : '?'}×${typeof window !== 'undefined' ? window.innerHeight : '?'}`,
+            `visualVP    ${vv ? Math.round(vv.width) : '—'}×${vv ? Math.round(vv.height) : '—'}`,
+            `clientWxH   ${ce ? ce.clientWidth : '?'}×${ce ? ce.clientHeight : '?'}`,
+            `screen      ${sc ? sc.width : '?'}×${sc ? sc.height : '?'}`,
+            `dpr         ${typeof window !== 'undefined' ? window.devicePixelRatio : '?'}`,
+            `stageScale  ${stageScale.toFixed(3)}`,
+            `radius/prot ${Math.round(radius)} / ${Math.round(protrusion)}`,
+          ].join('\n');
+        })()}
+      </div>
+
       {/* Top bar */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0,
