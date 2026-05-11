@@ -2,30 +2,12 @@
 // Black background, white text. Quick-add, stats, tasks, log, note.
 // Per-section extension: when the school section is open we also render the
 // SchoolClasses GPA tracker (semester dropdown + class list + computed GPA).
+// GPA math + grade tables live in sections.jsx and are reused here.
 
-const GRADE_POINTS = {
-  'A+': 4.0, 'A': 4.0, 'A-': 3.7,
-  'B+': 3.3, 'B': 3.0, 'B-': 2.7,
-  'C+': 2.3, 'C': 2.0, 'C-': 1.7,
-  'D+': 1.3, 'D': 1.0, 'D-': 0.7,
-  'F': 0.0,
-};
-// '—' sits in the list as "not graded yet" — counted in totals but skipped in GPA math.
-const GRADE_OPTIONS = ['—', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F'];
-
-function calcGPA(classes) {
-  let pts = 0, cr = 0;
-  for (const c of classes) {
-    const g = GRADE_POINTS[c.grade];
-    const credits = Number(c.credits) || 0;
-    if (g === undefined || credits <= 0) continue;
-    pts += g * credits;
-    cr += credits;
-  }
-  return cr > 0 ? { gpa: pts / cr, credits: cr } : { gpa: null, credits: 0 };
-}
-
-function DetailView({ section, content, accent, onClose, onCloseDragStart, visible, progress = 1 }) {
+function DetailView({
+  section, content, accent, onClose, onCloseDragStart, visible, progress = 1,
+  schoolSemesters, setSchoolSemesters,
+}) {
   const [tasks, setTasks] = React.useState(content.tasks);
   const [log, setLog] = React.useState(content.log);
   const [note, setNote] = React.useState(content.note);
@@ -201,10 +183,10 @@ function DetailView({ section, content, accent, onClose, onCloseDragStart, visib
 
       {/* Scroll region */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', marginRight: -8, paddingRight: 8 }}>
-        {(section.contentKey || section.id) === 'school' && (
+        {(section.contentKey || section.id) === 'school' && schoolSemesters && (
           <SchoolClasses
-            key={section.id}
-            initial={content.semesters || []}
+            semesters={schoolSemesters}
+            onChange={setSchoolSemesters}
             accent={accent}
           />
         )}
@@ -303,24 +285,32 @@ function SectionTitle({ children }) {
   );
 }
 
-function SchoolClasses({ initial, accent }) {
-  const [semesters, setSemesters] = React.useState(() =>
-    initial.length ? initial : [{ id: 'sem_' + Date.now(), name: 'New semester', classes: [] }]
-  );
+function SchoolClasses({ semesters, onChange, accent }) {
   const [activeId, setActiveId] = React.useState(semesters[0]?.id);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [newName, setNewName] = React.useState('');
   const [newCredits, setNewCredits] = React.useState('3');
   const [newGrade, setNewGrade] = React.useState('—');
 
-  const active = semesters.find((s) => s.id === activeId) || semesters[0];
+  // If the active semester is deleted (or list is empty on mount), pick a
+  // sane fallback.
+  React.useEffect(() => {
+    if (semesters.length === 0) return;
+    if (!semesters.find((s) => s.id === activeId)) {
+      setActiveId(semesters[0].id);
+    }
+  }, [semesters, activeId]);
+
+  const activeIdx = Math.max(0, semesters.findIndex((s) => s.id === activeId));
+  const active = semesters[activeIdx] || semesters[0];
   const semGPA = calcGPA(active?.classes || []);
-  const cumGPA = calcGPA(semesters.flatMap((s) => s.classes));
+  // Progressive: this semester + every older one (newer-first array → older
+  // semesters live at higher indices), skipping any future entries.
+  const cumGPA = calcProgressiveGPA(semesters, activeIdx);
 
   const setActiveClasses = (updater) => {
-    setSemesters((prev) =>
-      prev.map((s) => (s.id === active.id ? { ...s, classes: updater(s.classes) } : s))
-    );
+    if (!active) return;
+    onChange(semesters.map((s) => (s.id === active.id ? { ...s, classes: updater(s.classes) } : s)));
   };
 
   const addClass = (e) => {
@@ -348,14 +338,39 @@ function SchoolClasses({ initial, accent }) {
   const addSemester = () => {
     const year = new Date().getFullYear();
     const id = 'sem_' + Date.now();
-    const next = { id, name: `New semester ${year}`, classes: [] };
-    setSemesters((prev) => [next, ...prev]);
+    // New semesters default to future — they're added for planning. One tap
+    // on the toggle below flips them to current/past so they count for GPA.
+    const next = { id, name: `New semester ${year}`, isFuture: true, classes: [] };
+    onChange([next, ...semesters]);
     setActiveId(id);
     setMenuOpen(false);
   };
 
   const renameActive = (name) => {
-    setSemesters((prev) => prev.map((s) => (s.id === active.id ? { ...s, name } : s)));
+    if (!active) return;
+    onChange(semesters.map((s) => (s.id === active.id ? { ...s, name } : s)));
+  };
+
+  const toggleFuture = () => {
+    if (!active) return;
+    onChange(semesters.map((s) => (s.id === active.id ? { ...s, isFuture: !s.isFuture } : s)));
+  };
+
+  const removeSemester = (id) => {
+    const next = semesters.filter((s) => s.id !== id);
+    onChange(next);
+    if (id === activeId) {
+      setActiveId(next[0]?.id);
+    }
+  };
+
+  // Move semester at index `i` toward `dir` (-1 = newer/up, +1 = older/down).
+  const moveSemester = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= semesters.length) return;
+    const next = semesters.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
   };
 
   const fieldStyle = {
@@ -369,6 +384,14 @@ function SchoolClasses({ initial, accent }) {
     fontSize: 13,
     boxSizing: 'border-box',
   };
+  const iconBtn = (disabled) => ({
+    appearance: 'none', border: 0, background: 'transparent',
+    width: 26, height: 26, borderRadius: 6,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: disabled ? 'rgba(250,250,247,0.18)' : 'rgba(250,250,247,0.55)',
+    cursor: disabled ? 'default' : 'pointer',
+    padding: 0,
+  });
 
   return (
     <div style={{ marginBottom: 24 }}>
@@ -377,14 +400,17 @@ function SchoolClasses({ initial, accent }) {
         marginBottom: 10,
       }}>
         <SectionTitle>Classes</SectionTitle>
-        <div style={{
-          display: 'flex', gap: 14, alignItems: 'baseline',
-          fontFamily: 'Geist Mono, ui-monospace, monospace',
-          fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
-          color: 'rgba(250,250,247,0.45)',
-        }}>
+        <div
+          title="Cumulative GPA through this semester (skips future semesters)"
+          style={{
+            display: 'flex', gap: 14, alignItems: 'baseline',
+            fontFamily: 'Geist Mono, ui-monospace, monospace',
+            fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
+            color: 'rgba(250,250,247,0.45)',
+          }}
+        >
           <span>
-            Cum&nbsp;
+            Cum through&nbsp;
             <span style={{ color: '#FAFAF7', fontVariantNumeric: 'tabular-nums' }}>
               {cumGPA.gpa == null ? '—' : cumGPA.gpa.toFixed(2)}
             </span>
@@ -414,13 +440,22 @@ function SchoolClasses({ initial, accent }) {
             <span style={{ fontSize: 16, fontWeight: 500 }}>{active?.name || '—'}</span>
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <span style={{
-              fontFamily: 'Geist Mono, ui-monospace, monospace',
-              fontSize: 18, fontWeight: 500, color: accent,
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              {semGPA.gpa == null ? '—' : semGPA.gpa.toFixed(2)}
-            </span>
+            {active?.isFuture ? (
+              <span style={{
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+                padding: '3px 8px', borderRadius: 5,
+                border: `0.5px solid ${accent}`, color: accent,
+              }}>Future</span>
+            ) : (
+              <span style={{
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 18, fontWeight: 500, color: accent,
+                fontVariantNumeric: 'tabular-nums',
+              }}>
+                {semGPA.gpa == null ? '—' : semGPA.gpa.toFixed(2)}
+              </span>
+            )}
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
               style={{ transform: menuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.18s' }}>
               <path d="M3 4.5 6 8 9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
@@ -437,37 +472,91 @@ function SchoolClasses({ initial, accent }) {
             boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
             zIndex: 5,
           }}>
-            {semesters.map((s) => {
+            {semesters.map((s, i) => {
               const isActive = s.id === active?.id;
               const g = calcGPA(s.classes);
               return (
-                <button
+                <div
                   key={s.id}
-                  onClick={() => { setActiveId(s.id); setMenuOpen(false); }}
                   style={{
-                    appearance: 'none', border: 0, background: 'transparent',
-                    color: '#FAFAF7', width: '100%', padding: '11px 14px',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    cursor: 'pointer', textAlign: 'left',
-                    fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 14,
+                    display: 'grid',
+                    gridTemplateColumns: '1fr auto auto auto',
+                    alignItems: 'center', gap: 4,
+                    padding: '4px 6px 4px 14px',
                     borderBottom: '0.5px solid rgba(255,255,255,0.06)',
                   }}
                 >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button
+                    onClick={() => { setActiveId(s.id); setMenuOpen(false); }}
+                    style={{
+                      appearance: 'none', border: 0, background: 'transparent',
+                      color: '#FAFAF7', padding: '8px 0',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      cursor: 'pointer', textAlign: 'left', gap: 10,
+                      fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 14,
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      <span style={{
+                        width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                        background: isActive ? accent : 'rgba(255,255,255,0.18)',
+                      }} />
+                      <span style={{
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        color: s.isFuture ? 'rgba(250,250,247,0.65)' : '#FAFAF7',
+                        fontStyle: s.isFuture ? 'italic' : 'normal',
+                      }}>{s.name}</span>
+                      {s.isFuture && (
+                        <span style={{
+                          fontFamily: 'Geist Mono, ui-monospace, monospace',
+                          fontSize: 8, letterSpacing: '0.14em', textTransform: 'uppercase',
+                          color: accent, opacity: 0.85,
+                          padding: '1px 5px', borderRadius: 3,
+                          border: `0.5px solid ${accent}`,
+                        }}>Future</span>
+                      )}
+                    </span>
                     <span style={{
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: isActive ? accent : 'rgba(255,255,255,0.18)',
-                    }} />
-                    {s.name}
-                  </span>
-                  <span style={{
-                    fontFamily: 'Geist Mono, ui-monospace, monospace',
-                    fontSize: 12, color: 'rgba(250,250,247,0.55)',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}>
-                    {g.gpa == null ? '—' : g.gpa.toFixed(2)}
-                  </span>
-                </button>
+                      fontFamily: 'Geist Mono, ui-monospace, monospace',
+                      fontSize: 12, fontVariantNumeric: 'tabular-nums',
+                      color: s.isFuture ? 'rgba(250,250,247,0.3)' : 'rgba(250,250,247,0.55)',
+                    }}>
+                      {s.isFuture ? '—' : (g.gpa == null ? '—' : g.gpa.toFixed(2))}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => moveSemester(i, -1)}
+                    disabled={i === 0}
+                    aria-label="Move newer"
+                    style={iconBtn(i === 0)}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M2.5 6 5 3.5 7.5 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => moveSemester(i, 1)}
+                    disabled={i === semesters.length - 1}
+                    aria-label="Move older"
+                    style={iconBtn(i === semesters.length - 1)}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M2.5 4 5 6.5 7.5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => removeSemester(s.id)}
+                    aria-label="Delete semester"
+                    style={{
+                      ...iconBtn(false),
+                      color: 'rgba(250,250,247,0.45)',
+                    }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                      <path d="M2 9 9 2 M2 2 9 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
               );
             })}
             <button
@@ -487,21 +576,46 @@ function SchoolClasses({ initial, accent }) {
         )}
       </div>
 
-      {/* Inline rename of active semester */}
-      <input
-        value={active?.name || ''}
-        onChange={(e) => renameActive(e.target.value)}
-        placeholder="Semester name"
-        style={{
-          ...fieldStyle, width: '100%', marginBottom: 12,
-          fontStyle: 'italic',
-          fontFamily: '"Instrument Serif", Georgia, serif',
-          fontSize: 18,
-          background: 'transparent', border: 0,
-          borderBottom: '0.5px solid rgba(255,255,255,0.08)',
-          borderRadius: 0, padding: '4px 0',
-        }}
-      />
+      {/* Inline rename + future toggle for the active semester */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+        borderBottom: '0.5px solid rgba(255,255,255,0.08)', paddingBottom: 4,
+      }}>
+        <input
+          value={active?.name || ''}
+          onChange={(e) => renameActive(e.target.value)}
+          placeholder="Semester name"
+          style={{
+            flex: 1, minWidth: 0,
+            fontStyle: 'italic',
+            fontFamily: '"Instrument Serif", Georgia, serif',
+            fontSize: 18, color: '#FAFAF7',
+            background: 'transparent', border: 0, outline: 'none',
+            padding: '4px 0',
+          }}
+        />
+        <button
+          onClick={toggleFuture}
+          aria-pressed={active?.isFuture ? 'true' : 'false'}
+          title="Future semesters are excluded from GPA"
+          style={{
+            appearance: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '5px 10px', borderRadius: 999,
+            fontFamily: 'Geist Mono, ui-monospace, monospace',
+            fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase',
+            background: active?.isFuture ? accent : 'transparent',
+            color: active?.isFuture ? '#0B0B0E' : 'rgba(250,250,247,0.55)',
+            border: active?.isFuture ? `0.5px solid ${accent}` : '0.5px solid rgba(255,255,255,0.15)',
+          }}
+        >
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: active?.isFuture ? '#0B0B0E' : 'rgba(250,250,247,0.35)',
+          }} />
+          Future
+        </button>
+      </div>
 
       {/* Class list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>

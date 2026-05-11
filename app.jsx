@@ -104,6 +104,12 @@ function App() {
   const [targetIdx, setTargetIdx] = React.useState(0);
   const [idx, setIdxDirect] = useTweenIndex(targetIdx);
 
+  // Lifted so the brief panel's GPA stat and the detail's class tracker stay
+  // in sync. In-memory only for the prototype — same pattern as tasks/log.
+  const [schoolSemesters, setSchoolSemesters] = React.useState(
+    () => SECTION_LIB.school.semesters
+  );
+
   // Sheet gesture state. `finger` is the live (or last) pointer position;
   // `progress` is the open ratio (0=hidden, 1=fully covering). Together they
   // drive the curved sheet path: peak rides at `finger`, edges trail below.
@@ -231,7 +237,19 @@ function App() {
   const safeIdx = Math.max(0, Math.min(sections.length - 1, selectedIdx));
   const selected = sections[safeIdx];
   const contentKey = selected?.contentKey || selected?.id;
-  const content = SECTION_LIB[contentKey] || SECTION_LIB.work;
+  const baseContent = SECTION_LIB[contentKey] || SECTION_LIB.work;
+
+  // For school, swap the static GPA stat with the live computed one.
+  const content = React.useMemo(() => {
+    if (contentKey !== 'school') return baseContent;
+    const overall = calcOverallGPA(schoolSemesters);
+    const gpaStr = overall.gpa == null ? '—' : overall.gpa.toFixed(2);
+    return {
+      ...baseContent,
+      stats: baseContent.stats.map((s, i) => (i === 0 ? { ...s, value: gpaStr } : s)),
+      semesters: schoolSemesters,
+    };
+  }, [contentKey, baseContent, schoolSemesters]);
 
   // For the wheel's icon lookup, ensure each section has a valid iconKey
   const wheelSections = sections.map((s) => ({
@@ -408,6 +426,8 @@ function App() {
               progress={liquid.progress}
               onClose={closeDetail}
               onCloseDragStart={onCloseDragStart}
+              schoolSemesters={schoolSemesters}
+              setSchoolSemesters={setSchoolSemesters}
             />
           </div>
         </div>

@@ -168,10 +168,14 @@ const SECTION_LIB = {
       { t: 'Mon', text: 'Office hours w/ Yoon — 45m' },
     ],
     note: 'Camus essay angle: absurd as a discipline, not a feeling.',
+    // Semesters are stored newest-first; that order also defines the "before"
+    // relationship used for progressive cumulative GPA. `isFuture` semesters
+    // are skipped in every GPA calculation.
     semesters: [
       {
         id: 'sp26',
         name: 'Spring 2026',
+        isFuture: false,
         classes: [
           { id: 1, name: 'CS 142 — Algorithms', credits: 4, grade: 'A-' },
           { id: 2, name: 'PHIL 220 — Existentialism', credits: 3, grade: 'A' },
@@ -182,6 +186,7 @@ const SECTION_LIB = {
       {
         id: 'fa25',
         name: 'Fall 2025',
+        isFuture: false,
         classes: [
           { id: 1, name: 'CS 121 — Intro to CS', credits: 4, grade: 'A' },
           { id: 2, name: 'ENG 101 — Composition', credits: 3, grade: 'A-' },
@@ -316,4 +321,56 @@ const SECTION_LIB = {
   },
 };
 
-Object.assign(window, { Icon, SECTION_LIB, ICON_KEYS });
+// Standard US 4.0 scale. '—' is the placeholder for in-progress classes; it
+// stays in the list and counts toward total credits but is skipped in GPA
+// math until a real grade is set.
+const GRADE_POINTS = {
+  'A+': 4.0, 'A': 4.0, 'A-': 3.7,
+  'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+  'C+': 2.3, 'C': 2.0, 'C-': 1.7,
+  'D+': 1.3, 'D': 1.0, 'D-': 0.7,
+  'F': 0.0,
+};
+const GRADE_OPTIONS = ['—', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F'];
+
+function calcGPA(classes) {
+  let pts = 0, cr = 0;
+  for (const c of classes) {
+    const g = GRADE_POINTS[c.grade];
+    const credits = Number(c.credits) || 0;
+    if (g === undefined || credits <= 0) continue;
+    pts += g * credits;
+    cr += credits;
+  }
+  return cr > 0 ? { gpa: pts / cr, credits: cr } : { gpa: null, credits: 0 };
+}
+
+// Cumulative across every non-future semester — used by the brief panel
+// stat so the headline GPA reflects only real (current/past) grades.
+function calcOverallGPA(semesters) {
+  return calcGPA(
+    (semesters || [])
+      .filter((s) => !s.isFuture)
+      .flatMap((s) => s.classes)
+  );
+}
+
+// Progressive cumulative for the dropdown: from the given index (selected
+// semester) include itself plus every later index in the array (older
+// semesters, since the array is newest-first). Future semesters in that
+// slice are still skipped.
+function calcProgressiveGPA(semesters, fromIndex) {
+  if (!semesters || fromIndex < 0 || fromIndex >= semesters.length) {
+    return { gpa: null, credits: 0 };
+  }
+  return calcGPA(
+    semesters.slice(fromIndex)
+      .filter((s) => !s.isFuture)
+      .flatMap((s) => s.classes)
+  );
+}
+
+Object.assign(window, {
+  Icon, SECTION_LIB, ICON_KEYS,
+  GRADE_POINTS, GRADE_OPTIONS, calcGPA, calcOverallGPA, calcProgressiveGPA,
+});
