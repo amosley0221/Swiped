@@ -168,6 +168,28 @@ const SECTION_LIB = {
       { t: 'Mon', text: 'Office hours w/ Yoon — 45m' },
     ],
     note: 'Camus essay angle: absurd as a discipline, not a feeling.',
+    semesters: [
+      {
+        id: 'sp26',
+        name: 'Spring 2026',
+        classes: [
+          { id: 1, name: 'CS 142 — Algorithms', credits: 4, grade: 'A-' },
+          { id: 2, name: 'PHIL 220 — Existentialism', credits: 3, grade: 'A' },
+          { id: 3, name: 'MATH 250 — Linear Algebra', credits: 4, grade: 'B+' },
+          { id: 4, name: 'STAT 318 — Probability', credits: 3, grade: '—' },
+        ],
+      },
+      {
+        id: 'fa25',
+        name: 'Fall 2025',
+        classes: [
+          { id: 1, name: 'CS 121 — Intro to CS', credits: 4, grade: 'A' },
+          { id: 2, name: 'ENG 101 — Composition', credits: 3, grade: 'A-' },
+          { id: 3, name: 'MATH 140 — Calc I', credits: 4, grade: 'B+' },
+          { id: 4, name: 'HIST 110 — Modern World', credits: 3, grade: 'A' },
+        ],
+      },
+    ],
   },
   goals: {
     icon: 'target',

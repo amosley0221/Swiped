@@ -1,5 +1,29 @@
 // detail.jsx — Full detail view that appears after liquid swipe-up.
 // Black background, white text. Quick-add, stats, tasks, log, note.
+// Per-section extension: when the school section is open we also render the
+// SchoolClasses GPA tracker (semester dropdown + class list + computed GPA).
+
+const GRADE_POINTS = {
+  'A+': 4.0, 'A': 4.0, 'A-': 3.7,
+  'B+': 3.3, 'B': 3.0, 'B-': 2.7,
+  'C+': 2.3, 'C': 2.0, 'C-': 1.7,
+  'D+': 1.3, 'D': 1.0, 'D-': 0.7,
+  'F': 0.0,
+};
+// '—' sits in the list as "not graded yet" — counted in totals but skipped in GPA math.
+const GRADE_OPTIONS = ['—', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F'];
+
+function calcGPA(classes) {
+  let pts = 0, cr = 0;
+  for (const c of classes) {
+    const g = GRADE_POINTS[c.grade];
+    const credits = Number(c.credits) || 0;
+    if (g === undefined || credits <= 0) continue;
+    pts += g * credits;
+    cr += credits;
+  }
+  return cr > 0 ? { gpa: pts / cr, credits: cr } : { gpa: null, credits: 0 };
+}
 
 function DetailView({ section, content, accent, onClose, onCloseDragStart, visible, progress = 1 }) {
   const [tasks, setTasks] = React.useState(content.tasks);
@@ -177,6 +201,14 @@ function DetailView({ section, content, accent, onClose, onCloseDragStart, visib
 
       {/* Scroll region */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', marginRight: -8, paddingRight: 8 }}>
+        {(section.contentKey || section.id) === 'school' && (
+          <SchoolClasses
+            key={section.id}
+            initial={content.semesters || []}
+            accent={accent}
+          />
+        )}
+
         {/* Tasks */}
         <SectionTitle>Tasks · {tasks.filter((t) => !t.done).length} open</SectionTitle>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
@@ -267,6 +299,341 @@ function SectionTitle({ children }) {
       marginBottom: 10, marginTop: 2,
     }}>
       {children}
+    </div>
+  );
+}
+
+function SchoolClasses({ initial, accent }) {
+  const [semesters, setSemesters] = React.useState(() =>
+    initial.length ? initial : [{ id: 'sem_' + Date.now(), name: 'New semester', classes: [] }]
+  );
+  const [activeId, setActiveId] = React.useState(semesters[0]?.id);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [newName, setNewName] = React.useState('');
+  const [newCredits, setNewCredits] = React.useState('3');
+  const [newGrade, setNewGrade] = React.useState('—');
+
+  const active = semesters.find((s) => s.id === activeId) || semesters[0];
+  const semGPA = calcGPA(active?.classes || []);
+  const cumGPA = calcGPA(semesters.flatMap((s) => s.classes));
+
+  const setActiveClasses = (updater) => {
+    setSemesters((prev) =>
+      prev.map((s) => (s.id === active.id ? { ...s, classes: updater(s.classes) } : s))
+    );
+  };
+
+  const addClass = (e) => {
+    e?.preventDefault?.();
+    const name = newName.trim();
+    if (!name) return;
+    const credits = Math.max(0, Math.min(12, Number(newCredits) || 0));
+    setActiveClasses((cs) => [
+      ...cs,
+      { id: Date.now(), name, credits, grade: newGrade },
+    ]);
+    setNewName('');
+    setNewCredits('3');
+    setNewGrade('—');
+  };
+
+  const updateClass = (id, patch) => {
+    setActiveClasses((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  };
+
+  const removeClass = (id) => {
+    setActiveClasses((cs) => cs.filter((c) => c.id !== id));
+  };
+
+  const addSemester = () => {
+    const year = new Date().getFullYear();
+    const id = 'sem_' + Date.now();
+    const next = { id, name: `New semester ${year}`, classes: [] };
+    setSemesters((prev) => [next, ...prev]);
+    setActiveId(id);
+    setMenuOpen(false);
+  };
+
+  const renameActive = (name) => {
+    setSemesters((prev) => prev.map((s) => (s.id === active.id ? { ...s, name } : s)));
+  };
+
+  const fieldStyle = {
+    background: 'rgba(255,255,255,0.06)',
+    border: '0.5px solid rgba(255,255,255,0.12)',
+    color: '#FAFAF7',
+    borderRadius: 8,
+    padding: '8px 10px',
+    outline: 'none',
+    fontFamily: 'Geist, ui-sans-serif, system-ui',
+    fontSize: 13,
+    boxSizing: 'border-box',
+  };
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+        marginBottom: 10,
+      }}>
+        <SectionTitle>Classes</SectionTitle>
+        <div style={{
+          display: 'flex', gap: 14, alignItems: 'baseline',
+          fontFamily: 'Geist Mono, ui-monospace, monospace',
+          fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
+          color: 'rgba(250,250,247,0.45)',
+        }}>
+          <span>
+            Cum&nbsp;
+            <span style={{ color: '#FAFAF7', fontVariantNumeric: 'tabular-nums' }}>
+              {cumGPA.gpa == null ? '—' : cumGPA.gpa.toFixed(2)}
+            </span>
+          </span>
+        </div>
+      </div>
+
+      {/* Semester selector */}
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        <button
+          onClick={() => setMenuOpen((v) => !v)}
+          style={{
+            appearance: 'none', border: '0.5px solid rgba(255,255,255,0.12)',
+            background: 'rgba(255,255,255,0.05)', color: '#FAFAF7',
+            width: '100%', padding: '12px 14px', borderRadius: 12,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            cursor: 'pointer', textAlign: 'left',
+            fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 14,
+          }}
+        >
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{
+              fontFamily: 'Geist Mono, ui-monospace, monospace',
+              fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+              color: 'rgba(250,250,247,0.45)',
+            }}>Semester</span>
+            <span style={{ fontSize: 16, fontWeight: 500 }}>{active?.name || '—'}</span>
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span style={{
+              fontFamily: 'Geist Mono, ui-monospace, monospace',
+              fontSize: 18, fontWeight: 500, color: accent,
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {semGPA.gpa == null ? '—' : semGPA.gpa.toFixed(2)}
+            </span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+              style={{ transform: menuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.18s' }}>
+              <path d="M3 4.5 6 8 9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        </button>
+
+        {menuOpen && (
+          <div style={{
+            position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+            background: '#15151A',
+            border: '0.5px solid rgba(255,255,255,0.12)',
+            borderRadius: 12, overflow: 'hidden',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+            zIndex: 5,
+          }}>
+            {semesters.map((s) => {
+              const isActive = s.id === active?.id;
+              const g = calcGPA(s.classes);
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => { setActiveId(s.id); setMenuOpen(false); }}
+                  style={{
+                    appearance: 'none', border: 0, background: 'transparent',
+                    color: '#FAFAF7', width: '100%', padding: '11px 14px',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    cursor: 'pointer', textAlign: 'left',
+                    fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 14,
+                    borderBottom: '0.5px solid rgba(255,255,255,0.06)',
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{
+                      width: 6, height: 6, borderRadius: '50%',
+                      background: isActive ? accent : 'rgba(255,255,255,0.18)',
+                    }} />
+                    {s.name}
+                  </span>
+                  <span style={{
+                    fontFamily: 'Geist Mono, ui-monospace, monospace',
+                    fontSize: 12, color: 'rgba(250,250,247,0.55)',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}>
+                    {g.gpa == null ? '—' : g.gpa.toFixed(2)}
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              onClick={addSemester}
+              style={{
+                appearance: 'none', border: 0, background: 'transparent',
+                color: accent, width: '100%', padding: '12px 14px',
+                display: 'flex', alignItems: 'center', gap: 8,
+                cursor: 'pointer', textAlign: 'left',
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase',
+              }}
+            >
+              + Add semester
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Inline rename of active semester */}
+      <input
+        value={active?.name || ''}
+        onChange={(e) => renameActive(e.target.value)}
+        placeholder="Semester name"
+        style={{
+          ...fieldStyle, width: '100%', marginBottom: 12,
+          fontStyle: 'italic',
+          fontFamily: '"Instrument Serif", Georgia, serif',
+          fontSize: 18,
+          background: 'transparent', border: 0,
+          borderBottom: '0.5px solid rgba(255,255,255,0.08)',
+          borderRadius: 0, padding: '4px 0',
+        }}
+      />
+
+      {/* Class list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+        {(active?.classes || []).length === 0 && (
+          <div style={{
+            color: 'rgba(250,250,247,0.4)', fontSize: 13,
+            padding: '12px 0',
+          }}>
+            No classes yet. Add one below.
+          </div>
+        )}
+        {(active?.classes || []).map((c) => (
+          <div key={c.id} style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 60px 70px 28px',
+            gap: 8, alignItems: 'center',
+            padding: '8px 10px', borderRadius: 10,
+            background: 'rgba(255,255,255,0.04)',
+            border: '0.5px solid rgba(255,255,255,0.08)',
+          }}>
+            <input
+              value={c.name}
+              onChange={(e) => updateClass(c.id, { name: e.target.value })}
+              style={{
+                background: 'transparent', border: 0, outline: 'none',
+                color: '#FAFAF7', fontSize: 14,
+                fontFamily: 'Geist, ui-sans-serif, system-ui',
+                minWidth: 0,
+              }}
+            />
+            <input
+              type="number" inputMode="numeric" min="0" max="12" step="1"
+              value={c.credits}
+              onChange={(e) => updateClass(c.id, { credits: Math.max(0, Math.min(12, Number(e.target.value) || 0)) })}
+              style={{
+                background: 'transparent', border: 0, outline: 'none',
+                color: '#FAFAF7', fontSize: 13, textAlign: 'right',
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontVariantNumeric: 'tabular-nums',
+                minWidth: 0,
+              }}
+            />
+            <select
+              value={c.grade}
+              onChange={(e) => updateClass(c.id, { grade: e.target.value })}
+              style={{
+                appearance: 'none', WebkitAppearance: 'none',
+                background: 'rgba(255,255,255,0.08)', color: '#FAFAF7',
+                border: '0.5px solid rgba(255,255,255,0.1)',
+                borderRadius: 8, padding: '6px 8px',
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 12, fontWeight: 600,
+                textAlign: 'center', textAlignLast: 'center',
+                outline: 'none',
+              }}
+            >
+              {GRADE_OPTIONS.map((g) => <option key={g} value={g} style={{ background: '#15151A' }}>{g}</option>)}
+            </select>
+            <button
+              onClick={() => removeClass(c.id)}
+              aria-label="Remove class"
+              style={{
+                appearance: 'none', border: 0, background: 'transparent',
+                color: 'rgba(250,250,247,0.4)', cursor: 'pointer',
+                padding: 0, fontSize: 16, lineHeight: 1,
+              }}
+            >×</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Credits summary */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        fontFamily: 'Geist Mono, ui-monospace, monospace',
+        fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+        color: 'rgba(250,250,247,0.45)',
+        marginBottom: 16,
+      }}>
+        <span>{(active?.classes || []).length} classes · {(active?.classes || []).reduce((n, c) => n + (Number(c.credits) || 0), 0)} credits</span>
+        <span>graded {semGPA.credits} cr</span>
+      </div>
+
+      {/* Add class form */}
+      <form
+        onSubmit={addClass}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 60px 70px auto',
+          gap: 8, alignItems: 'stretch',
+        }}
+      >
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="Class name"
+          style={fieldStyle}
+        />
+        <input
+          type="number" inputMode="numeric" min="0" max="12" step="1"
+          value={newCredits}
+          onChange={(e) => setNewCredits(e.target.value)}
+          placeholder="Cr"
+          style={{ ...fieldStyle, textAlign: 'right',
+            fontFamily: 'Geist Mono, ui-monospace, monospace',
+            fontVariantNumeric: 'tabular-nums' }}
+        />
+        <select
+          value={newGrade}
+          onChange={(e) => setNewGrade(e.target.value)}
+          style={{
+            ...fieldStyle, appearance: 'none', WebkitAppearance: 'none',
+            textAlign: 'center', textAlignLast: 'center',
+            fontFamily: 'Geist Mono, ui-monospace, monospace', fontWeight: 600,
+          }}
+        >
+          {GRADE_OPTIONS.map((g) => <option key={g} value={g} style={{ background: '#15151A' }}>{g}</option>)}
+        </select>
+        <button
+          type="submit"
+          disabled={!newName.trim()}
+          style={{
+            appearance: 'none', border: 0, padding: '0 14px',
+            background: newName.trim() ? accent : 'rgba(255,255,255,0.08)',
+            color: newName.trim() ? '#0B0B0E' : 'rgba(250,250,247,0.4)',
+            fontFamily: 'Geist Mono, ui-monospace, monospace',
+            fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
+            borderRadius: 8, fontWeight: 600,
+            cursor: newName.trim() ? 'pointer' : 'default',
+          }}
+        >Add</button>
+      </form>
     </div>
   );
 }
