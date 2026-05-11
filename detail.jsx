@@ -9,17 +9,21 @@ function DetailView({
   section, content, accent, onClose, onCloseDragStart, visible, progress = 1,
   schoolSemesters, setSchoolSemesters,
   schoolActiveSemesterId, selectSchoolSemester,
-  schoolWeeks, setSchoolWeeks, schoolActiveWeekKey, setSchoolActiveWeekKey,
+  weeklyData, setWeeklyData, weeklyActiveKey, setWeeklyActiveKey,
   peopleData, setPeopleData,
   userName, setUserName,
   sections, updateSection,
   homeData, setHomeData,
 }) {
   const isSchool = (section.contentKey || section.id) === 'school';
+  const isWork = (section.contentKey || section.id) === 'work';
   const isPerson = (section.contentKey || section.id) === 'person';
   const isHome = (section.contentKey || section.id) === 'home';
+  // Both work and school run the weekly view (calendar + per-week
+  // tasks/log/note + horizontal swipe between weeks).
+  const isWeekly = isSchool || isWork;
 
-  // Non-school sections still keep their own in-memory tasks/log/note,
+  // Non-weekly sections still keep their own in-memory tasks/log/note,
   // refreshed when you swipe to a different section.
   const [localTasks, setLocalTasks] = React.useState(content.tasks);
   const [localLog, setLocalLog] = React.useState(content.log);
@@ -28,42 +32,62 @@ function DetailView({
   const inputRef = React.useRef(null);
 
   React.useEffect(() => {
-    if (!isSchool) {
+    if (!isWeekly) {
       setLocalTasks(content.tasks);
       setLocalLog(content.log);
       setLocalNote(content.note);
     }
-  }, [section.id, isSchool]);
+  }, [section.id, isWeekly]);
 
-  // For school, the week store is the source of truth. Read/write helpers
-  // act on the currently-active week.
-  const weekData = isSchool
-    ? (schoolWeeks[schoolActiveWeekKey] || { tasks: [], log: [], note: '' })
+  // For weekly sections, the per-section week store is the source of truth.
+  // Read/write helpers act on the section's currently-active week.
+  const sectionId = section.id;
+  const sectionWeekly = (weeklyData && weeklyData[sectionId]) || {};
+  const sectionActiveWeekKey = (weeklyActiveKey && weeklyActiveKey[sectionId]) || weekKey(new Date());
+  const weekData = isWeekly
+    ? (sectionWeekly[sectionActiveWeekKey] || { tasks: [], log: [], note: '' })
     : null;
   const updateActiveWeek = React.useCallback((updater) => {
-    setSchoolWeeks((prev) => {
-      const cur = prev[schoolActiveWeekKey] || { tasks: [], log: [], note: '' };
-      return { ...prev, [schoolActiveWeekKey]: updater(cur) };
+    setWeeklyData((prev) => {
+      const sec = prev[sectionId] || {};
+      const cur = sec[sectionActiveWeekKey] || { tasks: [], log: [], note: '' };
+      return { ...prev, [sectionId]: { ...sec, [sectionActiveWeekKey]: updater(cur) } };
     });
-  }, [setSchoolWeeks, schoolActiveWeekKey]);
+  }, [setWeeklyData, sectionId, sectionActiveWeekKey]);
+  const setSectionWeekKey = React.useCallback((k) => {
+    setWeeklyActiveKey((prev) => ({ ...prev, [sectionId]: k }));
+  }, [setWeeklyActiveKey, sectionId]);
 
-  const tasks = isSchool ? weekData.tasks : localTasks;
-  const log = isSchool ? weekData.log : localLog;
-  const note = isSchool ? weekData.note : localNote;
+  const tasks = isWeekly ? weekData.tasks : localTasks;
+  const log = isWeekly ? weekData.log : localLog;
+  const note = isWeekly ? weekData.note : localNote;
+
+  // Wraps a log array with a new entry timestamped right now. Tasks added /
+  // completed in weekly mode get a Recent line so the user can see what
+  // they did this week without us having to hardcode anything.
+  const logged = (existing, text) => [
+    { id: Date.now() + Math.random(), when: Date.now(), text },
+    ...(existing || []),
+  ];
 
   const toggle = (id) => {
-    if (isSchool) {
-      updateActiveWeek((w) => ({
-        ...w,
-        tasks: w.tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
-      }));
+    if (isWeekly) {
+      updateActiveWeek((w) => {
+        const task = w.tasks.find((t) => t.id === id);
+        const nextTasks = w.tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t));
+        // Log a check entry only when transitioning open → done.
+        if (task && !task.done) {
+          return { ...w, tasks: nextTasks, log: logged(w.log, `✓ ${task.title}`) };
+        }
+        return { ...w, tasks: nextTasks };
+      });
     } else {
       setLocalTasks((ts) => ts.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
     }
   };
 
   const removeTask = (id) => {
-    if (isSchool) {
+    if (isWeekly) {
       updateActiveWeek((w) => ({ ...w, tasks: w.tasks.filter((t) => t.id !== id) }));
     } else {
       setLocalTasks((ts) => ts.filter((t) => t.id !== id));
@@ -71,7 +95,7 @@ function DetailView({
   };
 
   const setNote = (v) => {
-    if (isSchool) {
+    if (isWeekly) {
       updateActiveWeek((w) => ({ ...w, note: v }));
     } else {
       setLocalNote(v);
@@ -82,16 +106,15 @@ function DetailView({
     if (!draft.trim()) return;
     const text = draft.trim();
     const newTask = { id: Date.now(), title: text, done: false };
-    const newLog = { t: 'Just now', text: `+ ${text}` };
-    if (isSchool) {
+    if (isWeekly) {
       updateActiveWeek((w) => ({
         ...w,
         tasks: [newTask, ...w.tasks],
-        log: [newLog, ...w.log],
+        log: logged(w.log, `+ ${text}`),
       }));
     } else {
       setLocalTasks((ts) => [newTask, ...ts]);
-      setLocalLog((l) => [newLog, ...l]);
+      setLocalLog((l) => [{ id: Date.now() + Math.random(), when: Date.now(), text: `+ ${text}` }, ...l]);
     }
     setDraft('');
   };
@@ -209,7 +232,7 @@ function DetailView({
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={isSchool ? 'Quick add to this week…' : 'Quick add to this section…'}
+            placeholder={isWeekly ? 'Quick add to this week…' : 'Quick add to this section…'}
             style={{
               flex: 1, background: 'transparent', border: 0, outline: 'none',
               color: FG_PINK, fontFamily: 'Geist, ui-sans-serif, system-ui',
@@ -292,10 +315,10 @@ function DetailView({
             setPeopleData={setPeopleData}
             accent={accent}
           />
-        ) : isSchool ? (
+        ) : isWeekly ? (
           <WeeklyView
-            weekKey={schoolActiveWeekKey}
-            setWeekKey={setSchoolActiveWeekKey}
+            weekKey={sectionActiveWeekKey}
+            setWeekKey={setSectionWeekKey}
             tasks={tasks}
             log={log}
             note={note}
@@ -378,7 +401,25 @@ function TaskRow({ task, accent, onToggle, onRemove }) {
   );
 }
 
+// Compact relative-time formatter used by the Recent log. "Just now" within a
+// minute, "Nm" / "Nh" later in the day, weekday name within a week, otherwise
+// "Mmm D".
+function formatRelativeWhen(when) {
+  if (!when || typeof when !== 'number') return null;
+  const diff = Date.now() - when;
+  if (diff < 0) return 'Just now';
+  if (diff < 60_000) return 'Just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
+  if (diff < 7 * 86_400_000) return new Date(when).toLocaleDateString('en-US', { weekday: 'short' });
+  return new Date(when).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function LogRow({ entry }) {
+  // Prefer real timestamps. Legacy entries (pre-migration) had a hardcoded
+  // `t` string like "Tue" — fall back to that when present so existing data
+  // still renders something useful.
+  const label = formatRelativeWhen(entry.when) || entry.t || '—';
   return (
     <div style={{
       display: 'grid', gridTemplateColumns: '64px 1fr', gap: 14,
@@ -389,7 +430,7 @@ function LogRow({ entry }) {
         fontFamily: 'Geist Mono, ui-monospace, monospace',
         fontSize: 11, color: 'rgba(250,128,114,0.45)',
         fontVariantNumeric: 'tabular-nums',
-      }}>{entry.t}</div>
+      }}>{label}</div>
       <div style={{ fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 13.5 }}>
         {entry.text}
       </div>

@@ -143,28 +143,61 @@ function App() {
     'swiped.school.activeSemesterId',
     () => SECTION_LIB.school.semesters[0]?.id
   );
-  const [schoolWeeks, setSchoolWeeks] = usePersistedState(
-    'swiped.school.weeks',
-    () => {
-      const defaultSem = SECTION_LIB.school.semesters[0];
-      const defaultDate = (defaultSem && semesterDefaultWeek(defaultSem.name)) || new Date();
-      return {
+  // Per-section weekly data: { [sectionId]: { [weekKey]: { tasks, log, note } } }.
+  // Both School and Work use this — keyed by section.id so multiple
+  // instances (two jobs, two schools) each get their own week store.
+  const [weeklyData, setWeeklyData] = usePersistedState('swiped.weekly', () => {
+    const defaultSem = SECTION_LIB.school.semesters[0];
+    const defaultDate = (defaultSem && semesterDefaultWeek(defaultSem.name)) || new Date();
+    return {
+      school: {
         [weekKey(defaultDate)]: {
           tasks: SECTION_LIB.school.tasks,
-          log: SECTION_LIB.school.log,
+          log: [],
           note: SECTION_LIB.school.note,
         },
-      };
-    }
-  );
-  const [schoolActiveWeekKey, setSchoolActiveWeekKey] = usePersistedState(
-    'swiped.school.activeWeekKey',
-    () => {
-      const defaultSem = SECTION_LIB.school.semesters[0];
-      const defaultDate = (defaultSem && semesterDefaultWeek(defaultSem.name)) || new Date();
-      return weekKey(defaultDate);
-    }
-  );
+      },
+    };
+  });
+  const [weeklyActiveKey, setWeeklyActiveKey] = usePersistedState('swiped.weeklyActive', () => {
+    const defaultSem = SECTION_LIB.school.semesters[0];
+    const defaultDate = (defaultSem && semesterDefaultWeek(defaultSem.name)) || new Date();
+    return { school: weekKey(defaultDate) };
+  });
+
+  // Migration from the old school-only weekly keys to the per-section
+  // structure. Drops hardcoded log seed entries (those without a `when`
+  // timestamp) so the Recent feed reflects real events instead of stub data.
+  React.useEffect(() => {
+    try {
+      if (localStorage.getItem('swiped.migrations.weeklyById') === '1') return;
+      const oldWeeksRaw = localStorage.getItem('swiped.school.weeks');
+      const oldActiveRaw = localStorage.getItem('swiped.school.activeWeekKey');
+      if (oldWeeksRaw) {
+        const oldWeeks = JSON.parse(oldWeeksRaw);
+        const cleaned = {};
+        for (const k of Object.keys(oldWeeks)) {
+          const v = oldWeeks[k] || {};
+          cleaned[k] = {
+            tasks: v.tasks || [],
+            log: (v.log || []).filter((e) => e && e.when),
+            note: v.note || '',
+          };
+        }
+        setWeeklyData((prev) => ({ ...prev, school: { ...(prev.school || {}), ...cleaned } }));
+      }
+      if (oldActiveRaw) {
+        try {
+          const oldKey = JSON.parse(oldActiveRaw);
+          setWeeklyActiveKey((prev) => ({ ...prev, school: oldKey }));
+        } catch (e) { /* ignore */ }
+      }
+      localStorage.removeItem('swiped.school.weeks');
+      localStorage.removeItem('swiped.school.activeWeekKey');
+      localStorage.setItem('swiped.migrations.weeklyById', '1');
+    } catch (e) { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // People sections — { [sectionId]: { phones, emails, birthday, notes, socials, reminders } }.
   // Keys are the section id (one entry per "person" section on the wheel).
@@ -191,7 +224,11 @@ function App() {
     const sem = schoolSemesters.find((s) => s.id === id);
     if (sem) {
       const def = semesterDefaultWeek(sem.name);
-      if (def) setSchoolActiveWeekKey(weekKey(def));
+      if (def) {
+        const schoolSec = sections.find((s) => (s.contentKey || s.id) === 'school');
+        const schoolId = schoolSec?.id || 'school';
+        setWeeklyActiveKey((prev) => ({ ...prev, [schoolId]: weekKey(def) }));
+      }
     }
   };
 
@@ -207,8 +244,8 @@ function App() {
     try {
       localStorage.removeItem('swiped.school.semesters');
       localStorage.removeItem('swiped.school.activeSemesterId');
-      localStorage.removeItem('swiped.school.weeks');
-      localStorage.removeItem('swiped.school.activeWeekKey');
+      localStorage.removeItem('swiped.weekly');
+      localStorage.removeItem('swiped.weeklyActive');
       localStorage.removeItem('swiped.people');
       localStorage.removeItem('swiped.home');
     } catch (e) { /* ignore */ }
@@ -218,14 +255,16 @@ function App() {
     const seedKey = weekKey(seedDate);
     setSchoolSemesters(seedSemesters);
     setSchoolActiveSemesterId(seedSem?.id);
-    setSchoolWeeks({
-      [seedKey]: {
-        tasks: SECTION_LIB.school.tasks,
-        log: SECTION_LIB.school.log,
-        note: SECTION_LIB.school.note,
+    setWeeklyData({
+      school: {
+        [seedKey]: {
+          tasks: SECTION_LIB.school.tasks,
+          log: [],
+          note: SECTION_LIB.school.note,
+        },
       },
     });
-    setSchoolActiveWeekKey(seedKey);
+    setWeeklyActiveKey({ school: seedKey });
     setPeopleData({});
     setHomeData({ phones: [], emails: [], socials: [], birthday: '', notes: '' });
   };
@@ -609,10 +648,10 @@ function App() {
               setSchoolSemesters={setSchoolSemesters}
               schoolActiveSemesterId={schoolActiveSemesterId}
               selectSchoolSemester={selectSchoolSemester}
-              schoolWeeks={schoolWeeks}
-              setSchoolWeeks={setSchoolWeeks}
-              schoolActiveWeekKey={schoolActiveWeekKey}
-              setSchoolActiveWeekKey={setSchoolActiveWeekKey}
+              weeklyData={weeklyData}
+              setWeeklyData={setWeeklyData}
+              weeklyActiveKey={weeklyActiveKey}
+              setWeeklyActiveKey={setWeeklyActiveKey}
               peopleData={peopleData}
               setPeopleData={setPeopleData}
               userName={t.userName}
