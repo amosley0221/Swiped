@@ -430,7 +430,10 @@ function App() {
     if (contentKey === 'budget') {
       const bd = budgetData || { accounts: [], income: [], bills: [] };
       const totalBalance = (bd.accounts || []).reduce((s, a) => s + (Number(a.balance) || 0), 0);
-      const monthlyIncome = (bd.income || []).reduce((s, i) => s + (Number(i.amount) || 0), 0);
+      // Income totals are post-tax monthly: each entry's gross is normalized
+      // to a per-month figure based on its pay type + frequency, then the
+      // average tax rate (default 22%) is subtracted.
+      const monthlyIncome = (bd.income || []).reduce((s, i) => s + monthlyNetIncome(i), 0);
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const sevenOut = new Date(today); sevenOut.setDate(today.getDate() + 7);
       const due7d = (bd.bills || []).reduce((s, b) => {

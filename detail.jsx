@@ -1768,7 +1768,7 @@ function BudgetDetails({ data, setData, accent }) {
   };
 
   const totalBalance = safe.accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
-  const monthlyIncome = safe.income.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const monthlyIncomeNet = safe.income.reduce((s, i) => s + monthlyNetIncome(i), 0);
   const billsTotal = safe.bills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
 
   const baseField = {
@@ -1862,41 +1862,166 @@ function BudgetDetails({ data, setData, accent }) {
         </button>
       </div>
 
-      {/* Monthly income — every entry is treated as a monthly amount. */}
+      {/* Income — per-source cards. Pick hourly or salaried, fill in the
+          relevant amount + frequency, and we'll normalize everything to a
+          monthly net total (using a ~22% average tax rate). */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <SectionTitle>Monthly income</SectionTitle>
+          <SectionTitle>Income · net</SectionTitle>
           <span style={sumStyle}>
-            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(monthlyIncome)}</span>&nbsp;/ mo
+            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(monthlyIncomeNet)}</span>&nbsp;/ mo
           </span>
         </div>
-        {safe.income.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 28px', gap: 8 }}>
-            <div style={colHeadStyle}>Source</div>
-            <div style={{ ...colHeadStyle, textAlign: 'right' }}>Amount</div>
-            <div />
-          </div>
-        )}
-        {safe.income.map((i) => (
-          <div key={i.id} style={{
-            display: 'grid', gridTemplateColumns: '1fr 130px 28px',
-            gap: 8, marginBottom: 8, alignItems: 'center',
-          }}>
-            <input
-              value={i.source} placeholder="Salary"
-              onChange={(e) => updateRow('income', i.id, { source: e.target.value })}
-              style={baseField}
-            />
-            <input
-              type="number" inputMode="decimal" step="0.01"
-              value={i.amount ?? ''} placeholder="0.00"
-              onChange={(e) => updateRow('income', i.id, { amount: e.target.value })}
-              style={moneyField}
-            />
-            <button onClick={() => removeRow('income', i.id)} aria-label="Remove" style={xBtn}>×</button>
-          </div>
-        ))}
-        <button onClick={() => addRow('income', { source: '', amount: '' })} style={addBtn}>
+        {safe.income.map((i) => {
+          const payType = i.payType || 'salaried';
+          const gross = monthlyGrossIncome(i);
+          const net = monthlyNetIncome(i);
+          const taxRate = isFinite(Number(i.taxRate)) ? Number(i.taxRate) : DEFAULT_INCOME_TAX_RATE;
+          const chip = (active, onClick, label) => (
+            <button onClick={onClick} style={{
+              appearance: 'none', cursor: 'pointer', flex: 1,
+              padding: '7px 10px', borderRadius: 8,
+              border: `0.5px solid ${active ? accent : 'rgba(255,255,255,0.15)'}`,
+              background: active ? 'rgba(79,168,98,0.12)' : 'transparent',
+              color: active ? accent : 'rgba(250,128,114,0.7)',
+              fontFamily: 'Geist Mono, ui-monospace, monospace',
+              fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase',
+              fontWeight: 600,
+            }}>{label}</button>
+          );
+          return (
+            <div key={i.id} style={{
+              border: '0.5px solid rgba(255,255,255,0.12)',
+              borderRadius: 12, padding: 12, marginBottom: 10,
+              display: 'flex', flexDirection: 'column', gap: 10,
+              background: 'rgba(255,255,255,0.03)',
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 28px', gap: 8, alignItems: 'center' }}>
+                <input
+                  value={i.source} placeholder="Salary, Side gig, …"
+                  onChange={(e) => updateRow('income', i.id, { source: e.target.value })}
+                  style={baseField}
+                />
+                <button onClick={() => removeRow('income', i.id)} aria-label="Remove" style={xBtn}>×</button>
+              </div>
+
+              <div style={{ display: 'flex', gap: 6 }}>
+                {chip(payType === 'salaried',
+                  () => updateRow('income', i.id, { payType: 'salaried' }),
+                  'Salaried')}
+                {chip(payType === 'hourly',
+                  () => updateRow('income', i.id, { payType: 'hourly' }),
+                  'Hourly')}
+              </div>
+
+              {payType === 'salaried' ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={colHeadStyle}>Gross / period</div>
+                    <input
+                      type="number" inputMode="decimal" step="0.01"
+                      value={i.amount ?? ''} placeholder="0.00"
+                      onChange={(e) => updateRow('income', i.id, { amount: e.target.value })}
+                      style={moneyField}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={colHeadStyle}>Frequency</div>
+                    <select
+                      value={i.frequency || 'monthly'}
+                      onChange={(e) => updateRow('income', i.id, { frequency: e.target.value })}
+                      style={{
+                        ...baseField, appearance: 'none', WebkitAppearance: 'none',
+                        fontFamily: 'Geist, ui-sans-serif, system-ui',
+                      }}
+                    >
+                      {INCOME_FREQUENCIES.map((f) => (
+                        <option key={f.value} value={f.value} style={{ background: '#15151A' }}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={colHeadStyle}>Rate / hour</div>
+                    <input
+                      type="number" inputMode="decimal" step="0.01"
+                      value={i.hourlyRate ?? ''} placeholder="0.00"
+                      onChange={(e) => updateRow('income', i.id, { hourlyRate: e.target.value })}
+                      style={moneyField}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={colHeadStyle}>Hours / week</div>
+                    <input
+                      type="number" inputMode="decimal" step="0.5" min="0" max="168"
+                      value={i.hoursPerWeek ?? ''} placeholder="40"
+                      onChange={(e) => updateRow('income', i.id, { hoursPerWeek: e.target.value })}
+                      style={moneyField}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px', gap: 8, alignItems: 'center' }}>
+                <div style={{ ...colHeadStyle, paddingBottom: 0 }}>Avg tax rate</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <input
+                    type="number" inputMode="numeric" step="1" min="0" max="60"
+                    value={i.taxRate ?? ''}
+                    placeholder={String(DEFAULT_INCOME_TAX_RATE)}
+                    onChange={(e) => updateRow('income', i.id, { taxRate: e.target.value })}
+                    style={{ ...moneyField, padding: '6px 8px' }}
+                  />
+                  <span style={{
+                    fontFamily: 'Geist Mono, ui-monospace, monospace',
+                    fontSize: 11, color: 'rgba(250,128,114,0.5)',
+                  }}>%</span>
+                </div>
+              </div>
+
+              <div style={{
+                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                paddingTop: 8, borderTop: '0.5px solid rgba(255,255,255,0.06)',
+              }}>
+                <span style={sumStyle}>
+                  After {taxRate}% taxes
+                </span>
+                <span style={{
+                  fontFamily: 'Geist Mono, ui-monospace, monospace',
+                  fontSize: 17, fontWeight: 500, color: FG_WHITE,
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {fmt(net)}
+                  <span style={{
+                    fontSize: 10, color: 'rgba(250,128,114,0.45)',
+                    marginLeft: 4,
+                  }}>/mo</span>
+                </span>
+              </div>
+              {gross > 0 && (
+                <div style={{
+                  fontFamily: 'Geist Mono, ui-monospace, monospace',
+                  fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
+                  color: 'rgba(250,128,114,0.4)', textAlign: 'right',
+                  marginTop: -6,
+                }}>
+                  gross {fmt(gross)} / mo
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <button
+          onClick={() => addRow('income', {
+            source: '', payType: 'salaried', amount: '',
+            frequency: 'monthly', taxRate: '',
+          })}
+          style={addBtn}
+        >
           + Add income
         </button>
       </div>

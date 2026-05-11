@@ -468,8 +468,45 @@ function semesterDefaultWeek(name) {
   return d;
 }
 
+// Income helpers — supports salaried (per-period amount + frequency) and
+// hourly (rate + weekly hours), each rolled up to a monthly figure and
+// adjusted for an average tax rate. DEFAULT_INCOME_TAX_RATE is the effective
+// rate applied when an entry doesn't override `taxRate`.
+const DEFAULT_INCOME_TAX_RATE = 22;
+const INCOME_FREQUENCIES = [
+  { value: 'weekly',      label: 'Weekly',      perYear: 52 },
+  { value: 'biweekly',    label: 'Biweekly',    perYear: 26 },
+  { value: 'semimonthly', label: 'Semimonthly', perYear: 24 },
+  { value: 'monthly',     label: 'Monthly',     perYear: 12 },
+  { value: 'yearly',      label: 'Yearly',      perYear: 1 },
+];
+
+function monthlyGrossIncome(item) {
+  if (!item) return 0;
+  if (item.payType === 'hourly') {
+    const rate = Number(item.hourlyRate) || 0;
+    const hours = Number(item.hoursPerWeek) || 0;
+    return (rate * hours * 52) / 12;
+  }
+  // Salaried (default) — legacy entries without payType/frequency are treated
+  // as a monthly gross amount, so the upgrade reads sensibly.
+  const amount = Number(item.amount) || 0;
+  const freq = INCOME_FREQUENCIES.find((f) => f.value === item.frequency)
+    || INCOME_FREQUENCIES.find((f) => f.value === 'monthly');
+  return amount * (freq.perYear / 12);
+}
+
+function monthlyNetIncome(item) {
+  const gross = monthlyGrossIncome(item);
+  const raw = Number(item && item.taxRate);
+  const rate = isFinite(raw) ? raw : DEFAULT_INCOME_TAX_RATE;
+  return gross * (1 - rate / 100);
+}
+
 Object.assign(window, {
   Icon, SECTION_LIB, ICON_KEYS,
   GRADE_POINTS, GRADE_OPTIONS, calcGPA, calcOverallGPA, calcProgressiveGPA,
   startOfWeek, weekKey, parseWeekKey, semesterDefaultWeek,
+  DEFAULT_INCOME_TAX_RATE, INCOME_FREQUENCIES,
+  monthlyGrossIncome, monthlyNetIncome,
 });
