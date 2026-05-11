@@ -150,7 +150,12 @@ function SettingsSheet({ open, sections, onChange, onClose, accent, tf, onResetS
             display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16,
           }}>
             {Object.keys(SECTION_LIB)
-              .filter((k) => !sections.some((s) => s.contentKey === k && s.name.toLowerCase() === k))
+              // Person + work are meant to be added multiple times (two jobs,
+              // multiple people), so they always stay in the Add grid. Every
+              // other template hides once a same-named section already exists
+              // — keeps the list tidy without preventing legitimate dupes.
+              .filter((k) => k === 'person' || k === 'work'
+                || !sections.some((s) => s.contentKey === k && s.name.toLowerCase() === k))
               .map((k) => {
                 const lib = SECTION_LIB[k];
                 const cap = k[0].toUpperCase() + k.slice(1);
