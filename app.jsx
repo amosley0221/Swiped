@@ -7,11 +7,12 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "wheelSpacing": 26,
   "liquid": "paint",
   "typeface": "modern",
+  "userName": "",
   "sections": [
     {"id":"work","name":"Work","iconKey":"briefcase","contentKey":"work"},
     {"id":"budget","name":"Budget","iconKey":"dollar","contentKey":"budget"},
+    {"id":"home","name":"Home","iconKey":"home","contentKey":"home"},
     {"id":"school","name":"School","iconKey":"cap","contentKey":"school"},
-    {"id":"goals","name":"Goals","iconKey":"target","contentKey":"goals"},
     {"id":"notes","name":"Notes","iconKey":"notebook","contentKey":"notes"}
   ]
 }/*EDITMODE-END*/;
@@ -101,7 +102,34 @@ function App() {
   const H = vh;
 
   const sections = t.sections;
-  const [targetIdx, setTargetIdx] = React.useState(0);
+
+  // First-load index: jump to whichever section is the user's "home" (added
+  // to the wheel as a centered default). Falls back to index 0 if the user
+  // has removed home from their layout.
+  const [targetIdx, setTargetIdx] = React.useState(() => {
+    const i = sections.findIndex((s) => (s.contentKey || s.id) === 'home');
+    return i >= 0 ? i : 0;
+  });
+
+  // One-time migration: anyone who installed Swiped before the Home section
+  // existed will have a persisted sections list without it. Insert home at
+  // the middle index on first load after this build (and jump the wheel
+  // there), then never again — so a user who later removes home won't see
+  // it re-appear.
+  React.useEffect(() => {
+    try {
+      if (localStorage.getItem('swiped.migrations.home') === '1') return;
+      const has = sections.some((s) => (s.contentKey || s.id) === 'home');
+      if (!has) {
+        const homeSection = { id: 'home', name: 'Home', iconKey: 'home', contentKey: 'home' };
+        const mid = Math.floor(sections.length / 2);
+        setTweak('sections', [...sections.slice(0, mid), homeSection, ...sections.slice(mid)]);
+        setTargetIdx(mid);
+      }
+      localStorage.setItem('swiped.migrations.home', '1');
+    } catch (e) { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [idx, setIdxDirect] = useTweenIndex(targetIdx);
 
   // All persisted to localStorage so semesters, classes, per-week
@@ -335,6 +363,30 @@ function App() {
         semesters: schoolSemesters,
       };
     }
+    if (contentKey === 'home') {
+      const firstName = (t.userName || '').trim().split(/\s+/)[0] || '';
+      const sectionCount = sections.length;
+      return {
+        ...baseContent,
+        headline: firstName
+          ? (<><span>Welcome </span><span style={{ color: t.accent }}>{firstName}</span></>)
+          : 'Welcome',
+        brief: firstName
+          ? 'Swipe the dial to explore your sections.'
+          : 'Swipe up to set your name and personalize Swiped.',
+        stats: [
+          { label: 'Sections', value: String(sectionCount) },
+          {
+            label: 'Today',
+            value: new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+          },
+          {
+            label: 'Time',
+            value: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+          },
+        ],
+      };
+    }
     if (contentKey === 'person') {
       const pd = peopleData[selected?.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '' };
       // Days until next occurrence of the birthday (month/day).
@@ -364,7 +416,7 @@ function App() {
       };
     }
     return baseContent;
-  }, [contentKey, baseContent, schoolSemesters, peopleData, selected]);
+  }, [contentKey, baseContent, schoolSemesters, peopleData, selected, t.userName, t.accent, sections.length]);
 
   // For the wheel's icon lookup, ensure each section has a valid iconKey
   const wheelSections = sections.map((s) => ({
@@ -551,6 +603,8 @@ function App() {
               setSchoolActiveWeekKey={setSchoolActiveWeekKey}
               peopleData={peopleData}
               setPeopleData={setPeopleData}
+              userName={t.userName}
+              setUserName={(v) => setTweak('userName', v)}
             />
           </div>
         </div>
@@ -610,6 +664,8 @@ function App() {
         accent={t.accent}
         tf={tf}
         onResetSchoolData={resetSchoolData}
+        userName={t.userName}
+        onUserName={(v) => setTweak('userName', v)}
       />
     </div>
   );

@@ -11,9 +11,11 @@ function DetailView({
   schoolActiveSemesterId, selectSchoolSemester,
   schoolWeeks, setSchoolWeeks, schoolActiveWeekKey, setSchoolActiveWeekKey,
   peopleData, setPeopleData,
+  userName, setUserName,
 }) {
   const isSchool = (section.contentKey || section.id) === 'school';
   const isPerson = (section.contentKey || section.id) === 'person';
+  const isHome = (section.contentKey || section.id) === 'home';
 
   // Non-school sections still keep their own in-memory tasks/log/note,
   // refreshed when you swipe to a different section.
@@ -160,7 +162,7 @@ function DetailView({
           fontSize: 10.5, letterSpacing: '0.18em', textTransform: 'uppercase',
           color: 'rgba(250,128,114,0.5)',
         }}>
-          {isPerson ? 'Person' : section.name}
+          {isPerson ? 'Person' : isHome ? 'Home' : section.name}
         </div>
         <div style={{ width: 34 }} />
       </div>
@@ -187,8 +189,8 @@ function DetailView({
         </div>
       </div>
 
-      {/* Quick-add — hidden for person sections, which have their own editors */}
-      {!isPerson && (
+      {/* Quick-add — hidden for person and home sections, which have their own editors */}
+      {!isPerson && !isHome && (
         <form onSubmit={onSubmit} style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '10px 12px', borderRadius: 14,
@@ -261,7 +263,13 @@ function DetailView({
           />
         )}
 
-        {isPerson ? (
+        {isHome ? (
+          <HomeDetails
+            userName={userName}
+            setUserName={setUserName}
+            accent={accent}
+          />
+        ) : isPerson ? (
           <PersonDetails
             section={section}
             peopleData={peopleData}
@@ -1181,6 +1189,40 @@ function CalendarPicker({ selected, onPick, onClose, accent }) {
 // first name (parsed from section.name); this view edits the full name plus
 // phones / emails / birthday / socials / notes. All edits are persisted via
 // the parent's peopleData map (keyed by section id) in app.jsx.
+// Common social platforms surfaced as quick-add chips. Unrecognized platforms
+// fall through socialUrl() and just don't get a clickable link icon.
+const SOCIAL_PLATFORMS = [
+  'Instagram', 'X', 'TikTok', 'Twitch', 'YouTube',
+  'Snapchat', 'LinkedIn', 'Threads',
+];
+
+function socialUrl(platform, handle) {
+  if (!handle) return null;
+  const h = handle.replace(/^@/, '').trim();
+  if (!h) return null;
+  if (/^https?:\/\//i.test(handle)) return handle;
+  const p = (platform || '').toLowerCase().trim();
+  if (p.includes('instagram') || p === 'ig') return `https://instagram.com/${h}`;
+  if (p === 'x' || p.includes('twitter')) return `https://x.com/${h}`;
+  if (p.includes('tiktok')) return `https://www.tiktok.com/@${h}`;
+  if (p.includes('twitch')) return `https://twitch.tv/${h}`;
+  if (p.includes('youtube') || p === 'yt') return `https://www.youtube.com/@${h}`;
+  if (p.includes('snap')) return `https://www.snapchat.com/add/${h}`;
+  if (p.includes('linkedin') || p === 'li') return `https://www.linkedin.com/in/${h}`;
+  if (p.includes('threads')) return `https://www.threads.net/@${h}`;
+  if (p.includes('facebook') || p === 'fb') return `https://www.facebook.com/${h}`;
+  if (p.includes('github') || p === 'gh') return `https://github.com/${h}`;
+  return null;
+}
+
+function openLink(href) {
+  if (!href || typeof window === 'undefined') return;
+  // On mobile, tel: and mailto: hand off to the dialer / mail client. Web
+  // links open in a new tab; iOS Safari may then deep-link into installed
+  // apps (e.g. Instagram, YouTube) when their universal-link is registered.
+  window.open(href, '_blank', 'noopener,noreferrer');
+}
+
 function PersonDetails({ section, peopleData, setPeopleData, accent }) {
   const data = peopleData[section.id] || {
     phones: [], emails: [], socials: [], birthday: '', notes: '',
@@ -1192,16 +1234,6 @@ function PersonDetails({ section, peopleData, setPeopleData, accent }) {
       return { ...prev, [section.id]: updater(cur) };
     });
   };
-
-  // The wheel pulls section.name (full name string) — we keep it editable here
-  // so users can type their first + last name in one field and the wheel
-  // mirrors the first word automatically.
-  // section.name isn't owned by PersonDetails directly; we'd need a callback
-  // to mutate the section list. For now expose firstName/lastName-style edits
-  // via a separate input that dispatches a synthesized rename request through
-  // a window-level event the parent listens to. Simpler: just show the name
-  // and tell users to rename it from Settings.
-  // (kept inline for clarity — see SettingsSheet for rename UX.)
 
   const fieldStyle = {
     background: 'rgba(255,255,255,0.06)',
@@ -1224,6 +1256,15 @@ function PersonDetails({ section, peopleData, setPeopleData, accent }) {
     color: 'rgba(250,128,114,0.45)', cursor: 'pointer',
     padding: 4, fontSize: 16, lineHeight: 1, flexShrink: 0,
   };
+  const openBtnStyle = (enabled) => ({
+    appearance: 'none',
+    border: `0.5px solid ${enabled ? accent : 'rgba(255,255,255,0.1)'}`,
+    background: 'transparent',
+    color: enabled ? accent : 'rgba(250,128,114,0.25)',
+    cursor: enabled ? 'pointer' : 'default',
+    width: 28, height: 28, borderRadius: 7, padding: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  });
   const addLinkStyle = {
     appearance: 'none', border: 0, background: 'transparent',
     color: accent, cursor: 'pointer', padding: '6px 0',
@@ -1231,6 +1272,11 @@ function PersonDetails({ section, peopleData, setPeopleData, accent }) {
     fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
     fontWeight: 600,
   };
+  const OpenIcon = (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <path d="M3 9 9 3 M5 3h4v4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 
   const addRow = (key, seed) => patch((c) => ({ ...c, [key]: [...(c[key] || []), { id: Date.now() + Math.random(), ...seed }] }));
   const updateRow = (key, id, p) => patch((c) => ({ ...c, [key]: (c[key] || []).map((r) => (r.id === id ? { ...r, ...p } : r)) }));
@@ -1238,55 +1284,71 @@ function PersonDetails({ section, peopleData, setPeopleData, accent }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-      {/* Phones */}
+      {/* Phones — tap the ↗ to launch the dialer */}
       <div>
         <SectionTitle>Phones</SectionTitle>
-        {(data.phones || []).map((p) => (
-          <div key={p.id} style={{
-            display: 'grid', gridTemplateColumns: '90px 1fr 28px',
-            gap: 8, marginBottom: 8, alignItems: 'center',
-          }}>
-            <input
-              value={p.label} placeholder="Mobile"
-              onChange={(e) => updateRow('phones', p.id, { label: e.target.value })}
-              style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
-            />
-            <input
-              type="tel" inputMode="tel"
-              value={p.value} placeholder="+1 555 0123"
-              onChange={(e) => updateRow('phones', p.id, { value: e.target.value })}
-              style={fieldStyle}
-            />
-            <button onClick={() => removeRow('phones', p.id)} aria-label="Remove" style={xBtnStyle}>×</button>
-          </div>
-        ))}
+        {(data.phones || []).map((p) => {
+          const cleaned = (p.value || '').replace(/\s+/g, '');
+          const href = cleaned ? `tel:${cleaned}` : null;
+          return (
+            <div key={p.id} style={{
+              display: 'grid', gridTemplateColumns: '90px 1fr 28px 28px',
+              gap: 8, marginBottom: 8, alignItems: 'center',
+            }}>
+              <input
+                value={p.label} placeholder="Mobile"
+                onChange={(e) => updateRow('phones', p.id, { label: e.target.value })}
+                style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
+              />
+              <input
+                type="tel" inputMode="tel"
+                value={p.value} placeholder="+1 555 0123"
+                onChange={(e) => updateRow('phones', p.id, { value: e.target.value })}
+                style={fieldStyle}
+              />
+              <button
+                onClick={() => openLink(href)} disabled={!href}
+                aria-label="Call" style={openBtnStyle(!!href)}
+              >{OpenIcon}</button>
+              <button onClick={() => removeRow('phones', p.id)} aria-label="Remove" style={xBtnStyle}>×</button>
+            </div>
+          );
+        })}
         <button onClick={() => addRow('phones', { label: 'Mobile', value: '' })} style={addLinkStyle}>
           + Add phone
         </button>
       </div>
 
-      {/* Emails */}
+      {/* Emails — tap the ↗ to open the mail client */}
       <div>
         <SectionTitle>Emails</SectionTitle>
-        {(data.emails || []).map((m) => (
-          <div key={m.id} style={{
-            display: 'grid', gridTemplateColumns: '90px 1fr 28px',
-            gap: 8, marginBottom: 8, alignItems: 'center',
-          }}>
-            <input
-              value={m.label} placeholder="Personal"
-              onChange={(e) => updateRow('emails', m.id, { label: e.target.value })}
-              style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
-            />
-            <input
-              type="email" inputMode="email" autoCapitalize="off" autoCorrect="off"
-              value={m.value} placeholder="name@example.com"
-              onChange={(e) => updateRow('emails', m.id, { value: e.target.value })}
-              style={fieldStyle}
-            />
-            <button onClick={() => removeRow('emails', m.id)} aria-label="Remove" style={xBtnStyle}>×</button>
-          </div>
-        ))}
+        {(data.emails || []).map((m) => {
+          const v = (m.value || '').trim();
+          const href = v ? `mailto:${v}` : null;
+          return (
+            <div key={m.id} style={{
+              display: 'grid', gridTemplateColumns: '90px 1fr 28px 28px',
+              gap: 8, marginBottom: 8, alignItems: 'center',
+            }}>
+              <input
+                value={m.label} placeholder="Personal"
+                onChange={(e) => updateRow('emails', m.id, { label: e.target.value })}
+                style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
+              />
+              <input
+                type="email" inputMode="email" autoCapitalize="off" autoCorrect="off"
+                value={m.value} placeholder="name@example.com"
+                onChange={(e) => updateRow('emails', m.id, { value: e.target.value })}
+                style={fieldStyle}
+              />
+              <button
+                onClick={() => openLink(href)} disabled={!href}
+                aria-label="Email" style={openBtnStyle(!!href)}
+              >{OpenIcon}</button>
+              <button onClick={() => removeRow('emails', m.id)} aria-label="Remove" style={xBtnStyle}>×</button>
+            </div>
+          );
+        })}
         <button onClick={() => addRow('emails', { label: 'Personal', value: '' })} style={addLinkStyle}>
           + Add email
         </button>
@@ -1299,39 +1361,68 @@ function PersonDetails({ section, peopleData, setPeopleData, accent }) {
           type="date"
           value={data.birthday || ''}
           onChange={(e) => patch((c) => ({ ...c, birthday: e.target.value }))}
-          style={{
-            ...fieldStyle,
-            width: '100%',
-            colorScheme: 'dark',
-          }}
+          style={{ ...fieldStyle, width: '100%', colorScheme: 'dark' }}
         />
       </div>
 
-      {/* Socials */}
+      {/* Socials — quick-add chips per platform (Twitch & YouTube included),
+          and ↗ opens the platform's profile URL (deep-links to the native
+          app on iOS when the universal-link handler is registered). */}
       <div>
         <SectionTitle>Social</SectionTitle>
-        {(data.socials || []).map((s) => (
-          <div key={s.id} style={{
-            display: 'grid', gridTemplateColumns: '110px 1fr 28px',
-            gap: 8, marginBottom: 8, alignItems: 'center',
-          }}>
-            <input
-              value={s.platform} placeholder="Instagram"
-              onChange={(e) => updateRow('socials', s.id, { platform: e.target.value })}
-              style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
-            />
-            <input
-              value={s.handle} placeholder="@handle"
-              autoCapitalize="off" autoCorrect="off"
-              onChange={(e) => updateRow('socials', s.id, { handle: e.target.value })}
-              style={fieldStyle}
-            />
-            <button onClick={() => removeRow('socials', s.id)} aria-label="Remove" style={xBtnStyle}>×</button>
-          </div>
-        ))}
-        <button onClick={() => addRow('socials', { platform: 'Instagram', handle: '' })} style={addLinkStyle}>
-          + Add social
-        </button>
+        {(data.socials || []).map((s) => {
+          const href = socialUrl(s.platform, s.handle);
+          return (
+            <div key={s.id} style={{
+              display: 'grid', gridTemplateColumns: '110px 1fr 28px 28px',
+              gap: 8, marginBottom: 8, alignItems: 'center',
+            }}>
+              <input
+                value={s.platform} placeholder="Instagram"
+                onChange={(e) => updateRow('socials', s.id, { platform: e.target.value })}
+                style={{ ...fieldStyle, ...labelStyle, color: 'rgba(250,128,114,0.7)', padding: '8px 10px' }}
+              />
+              <input
+                value={s.handle} placeholder="@handle"
+                autoCapitalize="off" autoCorrect="off"
+                onChange={(e) => updateRow('socials', s.id, { handle: e.target.value })}
+                style={fieldStyle}
+              />
+              <button
+                onClick={() => openLink(href)} disabled={!href}
+                aria-label="Open profile" style={openBtnStyle(!!href)}
+              >{OpenIcon}</button>
+              <button onClick={() => removeRow('socials', s.id)} aria-label="Remove" style={xBtnStyle}>×</button>
+            </div>
+          );
+        })}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+          {SOCIAL_PLATFORMS.map((plat) => (
+            <button
+              key={plat}
+              onClick={() => addRow('socials', { platform: plat, handle: '' })}
+              style={{
+                appearance: 'none',
+                border: '0.5px dashed rgba(255,255,255,0.18)',
+                background: 'transparent', color: accent, cursor: 'pointer',
+                padding: '6px 10px', borderRadius: 999,
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
+              }}
+            >+ {plat}</button>
+          ))}
+          <button
+            onClick={() => addRow('socials', { platform: '', handle: '' })}
+            style={{
+              appearance: 'none',
+              border: '0.5px dashed rgba(255,255,255,0.18)',
+              background: 'transparent', color: 'rgba(250,128,114,0.7)', cursor: 'pointer',
+              padding: '6px 10px', borderRadius: 999,
+              fontFamily: 'Geist Mono, ui-monospace, monospace',
+              fontSize: 9.5, letterSpacing: '0.12em', textTransform: 'uppercase',
+            }}
+          >+ Other</button>
+        </div>
       </div>
 
       {/* Notes */}
@@ -1349,6 +1440,61 @@ function PersonDetails({ section, peopleData, setPeopleData, accent }) {
         color: 'rgba(250,128,114,0.35)', textAlign: 'center', paddingTop: 6,
       }}>
         Rename or change avatar in Settings (gear)
+      </div>
+    </div>
+  );
+}
+
+// Home / welcome section. The brief panel and detail headline read
+// "Welcome <first name>" (with the first name accent-colored) — this editor
+// is just for changing that name. Falls back to a placeholder when empty.
+function HomeDetails({ userName, setUserName, accent }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <div>
+        <SectionTitle>Your name</SectionTitle>
+        <input
+          value={userName || ''}
+          onChange={(e) => setUserName && setUserName(e.target.value)}
+          placeholder="Your name"
+          autoCapitalize="words"
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            background: 'rgba(255,255,255,0.06)', color: FG_PINK,
+            border: '0.5px solid rgba(255,255,255,0.12)',
+            borderRadius: 12, padding: '12px 14px', outline: 'none',
+            fontFamily: '"Instrument Serif", Georgia, serif',
+            fontStyle: 'italic', fontSize: 20,
+          }}
+        />
+        <div style={{
+          marginTop: 8, fontFamily: 'Geist Mono, ui-monospace, monospace',
+          fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+          color: 'rgba(250,128,114,0.55)',
+        }}>
+          Home greets you with your first name in <span style={{ color: accent }}>accent</span>.
+        </div>
+      </div>
+
+      <div style={{
+        background: 'rgba(255,255,255,0.04)',
+        border: '0.5px solid rgba(255,255,255,0.08)',
+        borderRadius: 14, padding: '16px 18px',
+      }}>
+        <div style={{
+          fontFamily: '"Instrument Serif", Georgia, serif', fontStyle: 'italic',
+          fontSize: 22, color: FG_PINK, marginBottom: 6,
+        }}>
+          Make it yours.
+        </div>
+        <div style={{
+          fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 13.5,
+          color: 'rgba(250,128,114,0.65)', lineHeight: 1.5,
+        }}>
+          Open Settings (gear, top-right) to add new sections — work, classes,
+          people — reorder the dial, change accent or typeface, or upload custom
+          icons. Swipe the dial below to navigate between sections.
+        </div>
       </div>
     </div>
   );

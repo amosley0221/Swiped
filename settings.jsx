@@ -2,7 +2,7 @@
 // Slides up from bottom. Rename, reorder, change icon (preset or upload),
 // remove, and add new sections from the template library.
 
-function SettingsSheet({ open, sections, onChange, onClose, accent, tf, onResetSchoolData }) {
+function SettingsSheet({ open, sections, onChange, onClose, accent, tf, onResetSchoolData, userName, onUserName }) {
   const [editing, setEditing] = React.useState(null); // section index being icon-edited
 
   const updateAt = (i, patch) => onChange(sections.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
@@ -97,6 +97,32 @@ function SettingsSheet({ open, sections, onChange, onClose, accent, tf, onResetS
 
         {/* scroll */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 24px' }}>
+          {/* user name — used for Home's "Welcome <first name>" headline */}
+          {onUserName && (
+            <div style={{ marginBottom: 22 }}>
+              <Label tf={tf}>Your name</Label>
+              <input
+                value={userName || ''}
+                onChange={(e) => onUserName(e.target.value)}
+                placeholder="Add your name"
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  border: '0.5px solid rgba(11,11,14,0.12)',
+                  background: '#fff', borderRadius: 12,
+                  padding: '12px 14px', outline: 'none',
+                  fontFamily: tf.family, fontSize: 15, color: '#0B0B0E',
+                }}
+              />
+              <div style={{
+                marginTop: 6, fontFamily: tf.mono, fontSize: 9.5,
+                letterSpacing: '0.1em', textTransform: 'uppercase',
+                color: 'rgba(11,11,14,0.45)',
+              }}>
+                Shown on the Home section as "Welcome <span style={{ color: accent }}>{(userName || '').trim().split(/\s+/)[0] || 'name'}</span>"
+              </div>
+            </div>
+          )}
+
           {/* current sections */}
           <Label tf={tf}>In your wheel · {sections.length}</Label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 22 }}>

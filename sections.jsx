@@ -119,6 +119,21 @@ const ICON_KEYS = ['briefcase','dollar','cap','target','notebook','heart','leaf'
 
 // Brief copy + full data per section template. Keys map to TWEAK_DEFAULTS.sections[].iconKey.
 const SECTION_LIB = {
+  // Welcome / launchpad section. Headline is overridden at runtime in
+  // app.jsx to read "Welcome <first name>" with the first name in accent.
+  home: {
+    icon: 'home',
+    headline: 'Welcome',
+    brief: 'Your home base — swipe the dial to explore your sections',
+    stats: [
+      { label: 'Sections', value: '—' },
+      { label: 'Today', value: '—' },
+      { label: 'Streak', value: '—' },
+    ],
+    tasks: [],
+    log: [],
+    note: '',
+  },
   work: {
     icon: 'briefcase',
     headline: 'Deep work',
