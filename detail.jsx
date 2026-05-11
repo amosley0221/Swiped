@@ -1769,7 +1769,14 @@ function BudgetDetails({ data, setData, accent }) {
 
   const totalBalance = safe.accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
   const monthlyIncomeNet = safe.income.reduce((s, i) => s + monthlyNetIncome(i), 0);
+  const yearlyIncomeNet = monthlyIncomeNet * 12;
   const billsTotal = safe.bills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+  // Bills don't carry a frequency field yet, so the yearly projection
+  // assumes the current list represents a monthly recurring set — most
+  // common case (rent / utilities / subs).
+  const yearlyBills = billsTotal * 12;
+  const monthlyNet = monthlyIncomeNet - billsTotal;
+  const yearlyNet = monthlyNet * 12;
 
   const baseField = {
     background: 'rgba(255,255,255,0.06)',
@@ -1821,8 +1828,61 @@ function BudgetDetails({ data, setData, accent }) {
     return a.dueDate.localeCompare(b.dueDate);
   });
 
+  // Mini row used inside the Year overview card.
+  const overviewRow = (label, yearly, monthly, opts = {}) => {
+    const valueColor = opts.color || FG_WHITE;
+    return (
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr auto auto',
+        alignItems: 'baseline', gap: 14,
+        padding: '8px 0',
+        borderTop: opts.divider ? '0.5px solid rgba(255,255,255,0.06)' : 'none',
+      }}>
+        <span style={{
+          fontFamily: 'Geist Mono, ui-monospace, monospace',
+          fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+          color: 'rgba(250,128,114,0.55)',
+        }}>{label}</span>
+        <span style={{
+          fontFamily: 'Geist Mono, ui-monospace, monospace',
+          fontSize: 10, letterSpacing: '0.06em',
+          color: 'rgba(250,128,114,0.45)',
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {fmt(monthly)}<span style={{ marginLeft: 2 }}>/mo</span>
+        </span>
+        <span style={{
+          fontFamily: 'Geist Mono, ui-monospace, monospace',
+          fontSize: 17, fontWeight: 500, color: valueColor,
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {fmt(yearly)}<span style={{
+            fontSize: 10, color: 'rgba(250,128,114,0.45)', marginLeft: 4,
+          }}>/yr</span>
+        </span>
+      </div>
+    );
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      {/* Year overview — rolls income (net), bills, and the resulting cash
+          flow up to a yearly view. Bills are projected as monthly recurring
+          for now. Net flips red when bills outpace income. */}
+      <div style={{
+        border: '0.5px solid rgba(255,255,255,0.12)',
+        background: 'rgba(255,255,255,0.03)',
+        borderRadius: 14, padding: '12px 14px',
+      }}>
+        <SectionTitle>Year overview</SectionTitle>
+        {overviewRow('Income · net', yearlyIncomeNet, monthlyIncomeNet, { color: accent })}
+        {overviewRow('Bills', yearlyBills, billsTotal, { divider: true })}
+        {overviewRow('Net', yearlyNet, monthlyNet, {
+          divider: true,
+          color: monthlyNet >= 0 ? accent : '#FA8072',
+        })}
+      </div>
+
       {/* Accounts — bank / brokerage / wallet, anything that holds money. */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -1870,6 +1930,8 @@ function BudgetDetails({ data, setData, accent }) {
           <SectionTitle>Income · net</SectionTitle>
           <span style={sumStyle}>
             <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(monthlyIncomeNet)}</span>&nbsp;/ mo
+            &nbsp;·&nbsp;
+            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(yearlyIncomeNet)}</span>&nbsp;/ yr
           </span>
         </div>
         {safe.income.map((i) => {
@@ -2000,6 +2062,12 @@ function BudgetDetails({ data, setData, accent }) {
                     fontSize: 10, color: 'rgba(250,128,114,0.45)',
                     marginLeft: 4,
                   }}>/mo</span>
+                  &nbsp;·&nbsp;
+                  {fmt(net * 12)}
+                  <span style={{
+                    fontSize: 10, color: 'rgba(250,128,114,0.45)',
+                    marginLeft: 4,
+                  }}>/yr</span>
                 </span>
               </div>
               {gross > 0 && (
@@ -2009,7 +2077,7 @@ function BudgetDetails({ data, setData, accent }) {
                   color: 'rgba(250,128,114,0.4)', textAlign: 'right',
                   marginTop: -6,
                 }}>
-                  gross {fmt(gross)} / mo
+                  gross {fmt(gross)} / mo · {fmt(gross * 12)} / yr
                 </div>
               )}
             </div>
