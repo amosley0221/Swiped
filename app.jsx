@@ -97,13 +97,15 @@ function useTweenIndex(targetIdx, onArrive) {
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const { w: vw, h: vh } = useViewport();
-  // Stage width: phones get their native width, foldables/tablets/desktop
-  // get a wider stage so the wheel, brief copy and detail sheet aren't a
-  // tiny strip with black bars on the sides. Below 480 we use full vw; up
-  // to 480 we keep the phone-native column; above 480 we step up to a
-  // 640 cap which roughly matches an unfolded Z Fold in portrait.
-  const W = vw < 480 ? vw : Math.min(vw, 640);
+  // Stage fills the viewport. On a foldable/tablet/desktop the wheel and
+  // brief content scale up so the design doesn't look like a tiny strip in
+  // the middle of a wide screen.
+  const W = vw;
   const H = vh;
+  // 440 is the design baseline (typical phone). On anything wider, scale
+  // the wheel radius + protrusion proportionally, capped at 1.8x so the
+  // wheel doesn't take over a desktop monitor.
+  const stageScale = Math.min(1.8, Math.max(1, W / 440));
 
   const sections = t.sections;
 
@@ -520,8 +522,11 @@ function App() {
     iconKey: s.iconKey || SECTION_LIB[s.contentKey || s.id]?.icon || 'target',
   }));
 
-  const radius = t.wheelSize;
-  const protrusion = 175; // fixed — top of dial stays put; radius controls steepness
+  // Wheel scales with the stage so it stays a comfortable size on a phone
+  // and grows on a foldable / tablet. The user's steepness tweak still
+  // controls relative shape; stageScale just multiplies through.
+  const radius = t.wheelSize * stageScale;
+  const protrusion = 175 * stageScale; // top of dial stays put; radius controls steepness
   const tf = TYPEFACES[t.typeface] || TYPEFACES.modern;
 
   const [settingsOpen, setSettingsOpen] = React.useState(false);

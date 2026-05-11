@@ -20,7 +20,10 @@
     html, body {
       margin: 0; padding: 0;
       width: 100%; height: 100%;
-      background: #0B0B0E; /* black letterbox behind centered phone-width app */
+      /* Match the stage background so the status-bar safe area and any
+         unused viewport space (e.g. an unfolded Fold) blend with the app
+         instead of letterboxing in black. */
+      background: #FAFAF7;
       overflow: hidden;
       overscroll-behavior: none;
       font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
@@ -45,6 +48,16 @@
   <script type="text/babel">
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
+  </script>
+  <script>
+    // Register the service worker so Android Chrome treats Swiped as an
+    // installable PWA (otherwise the "install" option in the menu falls
+    // back to "Add shortcut" / Chrome-hosted site instead of standalone).
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => { /* ignore */ });
+      });
+    }
   </script>
 </body>
 </html>

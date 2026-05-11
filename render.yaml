@@ -24,6 +24,14 @@ services:
       - path: /
         name: Cache-Control
         value: no-cache, no-store, must-revalidate
+      # The service worker itself must always revalidate — otherwise a stale
+      # SW kept around by the browser will block PWA updates.
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
+      - path: /sw.js
+        name: Service-Worker-Allowed
+        value: /
     routes:
       - type: rewrite
         source: /canvas
