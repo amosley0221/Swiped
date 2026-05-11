@@ -97,8 +97,12 @@ function useTweenIndex(targetIdx, onArrive) {
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const { w: vw, h: vh } = useViewport();
-  // Clamp to mobile width on desktop. The "stage" is the actual app viewport.
-  const W = Math.min(vw, 440);
+  // Stage width: phones get their native width, foldables/tablets/desktop
+  // get a wider stage so the wheel, brief copy and detail sheet aren't a
+  // tiny strip with black bars on the sides. Below 480 we use full vw; up
+  // to 480 we keep the phone-native column; above 480 we step up to a
+  // 640 cap which roughly matches an unfolded Z Fold in portrait.
+  const W = vw < 480 ? vw : Math.min(vw, 640);
   const H = vh;
 
   const sections = t.sections;
