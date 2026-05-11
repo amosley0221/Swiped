@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: swiped
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: .
+    headers:
+      - path: /manifest.json
+        name: Content-Type
+        value: application/manifest+json
+      - path: /*.jsx
+        name: Content-Type
+        value: text/babel
+    routes:
+      - type: rewrite
+        source: /canvas
+        destination: /Swiped%20Canvas.html
+      - type: rewrite
+        source: /app
+        destination: /Swiped.html
