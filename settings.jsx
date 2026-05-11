@@ -548,6 +548,13 @@ function SyncSection({ tf, accent }) {
               Continue with Google
             </button>
             <div style={{
+              fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.14em',
+              textTransform: 'uppercase', color: 'rgba(11,11,14,0.4)',
+              textAlign: 'center', marginTop: -2,
+            }}>
+              Fastest — no email needed
+            </div>
+            <div style={{
               fontFamily: tf.mono, fontSize: 9.5, letterSpacing: '0.16em',
               textTransform: 'uppercase', color: 'rgba(11,11,14,0.4)',
               textAlign: 'center', padding: '4px 0',
@@ -581,10 +588,17 @@ function SyncSection({ tf, accent }) {
             </form>
             {status === 'sent-email' && (
               <div style={{
-                fontFamily: tf.family, fontSize: 12.5, color: 'rgba(11,11,14,0.6)',
-                fontStyle: 'italic',
+                fontFamily: tf.family, fontSize: 12.5, lineHeight: 1.45,
+                color: 'rgba(11,11,14,0.65)',
+                background: 'rgba(232,197,71,0.12)',
+                border: '0.5px solid rgba(232,197,71,0.35)',
+                borderRadius: 10, padding: '10px 12px',
               }}>
-                Link sent — check your inbox and open the link on this device to finish signing in.
+                Link sent. <strong>Check your spam / junk folder</strong> if you
+                don't see it in a minute — it comes from a <code style={{
+                  fontFamily: tf.mono, fontSize: 11.5,
+                }}>noreply@</code> address that mail clients often filter. Open
+                the link on this device to finish signing in.
               </div>
             )}
             {status === 'error' && error && (
