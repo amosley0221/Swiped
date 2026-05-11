@@ -139,7 +139,8 @@ function App() {
   );
 
   // Picking a semester also jumps the weekly view to that semester's default
-  // week (first week of Jan/Jun/Aug). User can still navigate freely afterward.
+  // week (first week of Jan/Jun/Aug, or today if the semester is current).
+  // User can still navigate freely afterward.
   const selectSchoolSemester = (id) => {
     setSchoolActiveSemesterId(id);
     const sem = schoolSemesters.find((s) => s.id === id);
@@ -147,6 +148,35 @@ function App() {
       const def = semesterDefaultWeek(sem.name);
       if (def) setSchoolActiveWeekKey(weekKey(def));
     }
+  };
+
+  // Wipe every persisted school field back to the seed defaults. Behind a
+  // confirm so it's not accidentally tappable.
+  const resetSchoolData = () => {
+    const ok = typeof window !== 'undefined' && window.confirm(
+      'Reset school data? This clears your semesters, classes, weekly tasks, and notes.'
+    );
+    if (!ok) return;
+    try {
+      localStorage.removeItem('swiped.school.semesters');
+      localStorage.removeItem('swiped.school.activeSemesterId');
+      localStorage.removeItem('swiped.school.weeks');
+      localStorage.removeItem('swiped.school.activeWeekKey');
+    } catch (e) { /* ignore */ }
+    const seedSemesters = SECTION_LIB.school.semesters;
+    const seedSem = seedSemesters[0];
+    const seedDate = (seedSem && semesterDefaultWeek(seedSem.name)) || new Date();
+    const seedKey = weekKey(seedDate);
+    setSchoolSemesters(seedSemesters);
+    setSchoolActiveSemesterId(seedSem?.id);
+    setSchoolWeeks({
+      [seedKey]: {
+        tasks: SECTION_LIB.school.tasks,
+        log: SECTION_LIB.school.log,
+        note: SECTION_LIB.school.note,
+      },
+    });
+    setSchoolActiveWeekKey(seedKey);
   };
 
   // Sheet gesture state. `finger` is the live (or last) pointer position;
@@ -540,6 +570,7 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         accent={t.accent}
         tf={tf}
+        onResetSchoolData={resetSchoolData}
       />
     </div>
   );

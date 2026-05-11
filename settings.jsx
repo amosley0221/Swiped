@@ -2,7 +2,7 @@
 // Slides up from bottom. Rename, reorder, change icon (preset or upload),
 // remove, and add new sections from the template library.
 
-function SettingsSheet({ open, sections, onChange, onClose, accent, tf }) {
+function SettingsSheet({ open, sections, onChange, onClose, accent, tf, onResetSchoolData }) {
   const [editing, setEditing] = React.useState(null); // section index being icon-edited
 
   const updateAt = (i, patch) => onChange(sections.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
@@ -167,6 +167,49 @@ function SettingsSheet({ open, sections, onChange, onClose, accent, tf }) {
           }}>
             Have 2 jobs? Add Work twice and rename each.
           </div>
+
+          {/* Danger zone — wipe persisted section data back to defaults. */}
+          {onResetSchoolData && (
+            <div style={{
+              marginTop: 28, paddingTop: 18,
+              borderTop: '0.5px solid rgba(11,11,14,0.1)',
+            }}>
+              <div style={{
+                fontFamily: tf.mono, fontSize: 9.5, letterSpacing: '0.18em',
+                textTransform: 'uppercase', color: 'rgba(11,11,14,0.45)',
+                marginBottom: 10,
+              }}>
+                Reset data
+              </div>
+              <button
+                onClick={onResetSchoolData}
+                style={{
+                  appearance: 'none', width: '100%', cursor: 'pointer',
+                  border: '0.5px solid rgba(11,11,14,0.18)',
+                  background: 'transparent', borderRadius: 12,
+                  padding: '12px 14px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  fontFamily: tf.family, fontSize: 14, color: '#0B0B0E',
+                }}
+              >
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2, textAlign: 'left' }}>
+                  <span style={{ fontWeight: 500 }}>Reset school data</span>
+                  <span style={{
+                    fontFamily: tf.mono, fontSize: 10, letterSpacing: '0.08em',
+                    color: 'rgba(11,11,14,0.5)',
+                  }}>
+                    Restores seed semesters, classes, weekly tasks &amp; notes
+                  </span>
+                </span>
+                <span style={{
+                  fontFamily: tf.mono, fontSize: 10, letterSpacing: '0.14em',
+                  textTransform: 'uppercase', color: 'rgba(11,11,14,0.5)',
+                }}>
+                  Reset →
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

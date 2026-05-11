@@ -393,9 +393,12 @@ function parseWeekKey(key) {
   return new Date(y, m - 1, d);
 }
 
-// Default week for a semester name. Spring → January, Summer → June, Fall/
-// Autumn → August. Returns the first Monday on or after the 1st of that
-// month. Returns null if the name doesn't match a known term.
+// Default week for a semester name. Spring → Jan–May, Summer → Jun–Jul,
+// Fall/Autumn → Aug–Dec. If today's date falls inside the semester's range
+// the default is today's week (so opening the current semester drops you on
+// the current week). Otherwise (past or future term) it's the first Monday
+// on or after the 1st of the term's start month. Returns null if the name
+// doesn't match a known term.
 function semesterDefaultWeek(name) {
   if (!name) return null;
   const yMatch = name.match(/\b(20\d{2})\b/) || name.match(/'?(\d{2})\b/);
@@ -403,12 +406,18 @@ function semesterDefaultWeek(name) {
     ? (yMatch[1].length === 2 ? 2000 + parseInt(yMatch[1], 10) : parseInt(yMatch[1], 10))
     : new Date().getFullYear();
   const lower = name.toLowerCase();
-  let month;
-  if (lower.includes('spring')) month = 0;
-  else if (lower.includes('summer')) month = 5;
-  else if (lower.includes('fall') || lower.includes('autumn')) month = 7;
+  let startMonth, endMonth;
+  if (lower.includes('spring')) { startMonth = 0; endMonth = 4; }       // Jan–May
+  else if (lower.includes('summer')) { startMonth = 5; endMonth = 6; }   // Jun–Jul
+  else if (lower.includes('fall') || lower.includes('autumn')) { startMonth = 7; endMonth = 11; } // Aug–Dec
   else return null;
-  const d = new Date(year, month, 1);
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const semStart = new Date(year, startMonth, 1);
+  const semEnd = new Date(year, endMonth + 1, 0); // last day of the end month
+  if (today >= semStart && today <= semEnd) return today;
+
+  const d = new Date(year, startMonth, 1);
   while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
   return d;
 }
