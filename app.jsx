@@ -39,13 +39,6 @@ const TYPEFACES = {
   },
 };
 
-const LIQUID_OPTIONS = [
-  { value: 'paint', label: 'Gloopy paint' },
-  { value: 'water', label: 'Water / ink' },
-  { value: 'blob', label: 'Soft blob' },
-  { value: 'metaballs', label: 'Metaballs' },
-];
-
 function useViewport() {
   const [vp, setVp] = React.useState(() => ({
     w: window.innerWidth, h: window.innerHeight,
@@ -129,13 +122,15 @@ function App() {
 
   const [pulseKey, setPulseKey] = React.useState(0);
 
-  // Liquid gesture: start when wheel reports upward drag intent
-  const onLiquidStart = ({ startX, startY, currentY }) => {
-    setLiquid({ active: true, progress: 0, origin: { x: Math.min(W - 30, Math.max(30, startX)), y: startY } });
+  // Sheet gesture: the section panel tracks the finger 1:1. Drag up from the
+  // wheel and the black sheet rises by the same distance your finger travels;
+  // past the halfway mark (or a quick fling), it commits open.
+  const onLiquidStart = ({ startX, startY }) => {
+    setLiquid({ active: true, progress: 0, origin: null });
     const startTime = performance.now();
     const move = (ev) => {
       const dy = startY - ev.clientY;
-      const p = Math.max(0, Math.min(1, dy / (H * 0.55)));
+      const p = Math.max(0, Math.min(1, dy / H));
       setLiquid((l) => ({ ...l, progress: p }));
     };
     const up = (ev) => {
@@ -144,15 +139,11 @@ function App() {
       const dy = startY - (ev.clientY ?? startY);
       const elapsed = performance.now() - startTime;
       const velocity = dy / Math.max(50, elapsed);
-      const finalProgress = Math.max(0, Math.min(1, dy / (H * 0.55)));
-      // commit if past threshold OR fast upward fling
-      if (finalProgress > 0.45 || (velocity > 1.2 && finalProgress > 0.2)) {
-        // animate progress → 1, then open
-        animateProgress(liquidRef.current.progress || finalProgress, 1, 280, () => {
-          setDetailOpen(true);
-        });
+      const finalProgress = liquidRef.current.progress;
+      if (finalProgress > 0.45 || (velocity > 1.2 && finalProgress > 0.15)) {
+        animateProgress(finalProgress, 1, 240, () => setDetailOpen(true));
       } else {
-        animateProgress(liquidRef.current.progress || finalProgress, 0, 240, () => {
+        animateProgress(finalProgress, 0, 220, () => {
           setLiquid({ active: false, progress: 0, origin: null });
         });
       }
@@ -184,25 +175,24 @@ function App() {
     });
   };
 
-  // Drag-down to close gesture: pointerdown on X (or top handle) lets the user
-  // pull the liquid back toward the dial, mirroring the open animation.
+  // Drag-down to close: grab the top handle (or X) and pull the sheet down.
+  // The sheet's vertical offset tracks the finger 1:1; past the halfway point
+  // (or a quick downward fling) it commits closed.
   const onCloseDragStart = (e) => {
     e.preventDefault();
-    const startX = e.clientX;
     const startY = e.clientY;
     const startTime = performance.now();
     let moved = false;
     let lastY = startY;
-    setDetailOpen(false); // hide detail content while dragging; opacity follows progress
-    // origin for the liquid "sink" point follows finger x so paint drains where you drag
-    setLiquid({ active: true, progress: 1, origin: { x: Math.min(W - 30, Math.max(30, startX)), y: H - 220 } });
+    setDetailOpen(false);
+    setLiquid({ active: true, progress: 1, origin: null });
 
     const move = (ev) => {
       lastY = ev.clientY;
       const dy = ev.clientY - startY;
       if (Math.abs(dy) > 4) moved = true;
-      const p = Math.max(0, Math.min(1, 1 - dy / (H * 0.55)));
-      setLiquid((l) => ({ ...l, progress: p, origin: { x: Math.min(W - 30, Math.max(30, ev.clientX)), y: H - 220 } }));
+      const p = Math.max(0, Math.min(1, 1 - dy / H));
+      setLiquid((l) => ({ ...l, progress: p }));
     };
     const up = (ev) => {
       window.removeEventListener('pointermove', move);
@@ -210,9 +200,9 @@ function App() {
       const dy = (ev.clientY ?? lastY) - startY;
       const elapsed = performance.now() - startTime;
       const velocity = dy / Math.max(50, elapsed); // positive = downward fling
-      // tap fallback — no real drag
       if (!moved) {
-        animateProgress(liquidRef.current.progress, 0, 420, () => {
+        // tap on the X: animate closed
+        animateProgress(liquidRef.current.progress, 0, 280, () => {
           setLiquid({ active: false, progress: 0, origin: null });
         });
         return;
@@ -220,12 +210,11 @@ function App() {
       const finalProgress = liquidRef.current.progress;
       const commit = finalProgress < 0.55 || (velocity > 1.0 && finalProgress < 0.85);
       if (commit) {
-        animateProgress(finalProgress, 0, 320, () => {
+        animateProgress(finalProgress, 0, 260, () => {
           setLiquid({ active: false, progress: 0, origin: null });
         });
       } else {
-        // snap back open
-        animateProgress(finalProgress, 1, 240, () => setDetailOpen(true));
+        animateProgress(finalProgress, 1, 220, () => setDetailOpen(true));
       }
     };
     window.addEventListener('pointermove', move);
@@ -373,26 +362,30 @@ function App() {
       {/* Hint */}
       <SwipeHint visible={!liquid.active && !detailOpen} protrusion={protrusion} tf={tf} />
 
-      {/* Liquid */}
-      <LiquidReveal
-        progress={liquid.progress}
-        W={W} H={H}
-        style={t.liquid}
-        origin={liquid.origin}
-        accent={t.accent}
-      />
+      {/* Sheet — black panel that tracks the finger up/down */}
+      <LiquidReveal progress={liquid.progress} W={W} H={H} />
 
-      {/* Detail view (over liquid black) */}
-      {(detailOpen || liquid.progress > 0.3) && (
-        <DetailView
-          section={selected}
-          content={content}
-          accent={t.accent}
-          visible={detailOpen}
-          progress={liquid.progress}
-          onClose={closeDetail}
-          onCloseDragStart={onCloseDragStart}
-        />
+      {/* Detail content rides on top of the sheet and translates with it,
+          so dragging the handle drags the whole section. */}
+      {(detailOpen || liquid.progress > 0.02) && (
+        <div
+          style={{
+            position: 'absolute', inset: 0, zIndex: 40,
+            transform: `translate3d(0, ${(1 - liquid.progress) * H}px, 0)`,
+            pointerEvents: detailOpen ? 'auto' : 'none',
+            willChange: 'transform',
+          }}
+        >
+          <DetailView
+            section={selected}
+            content={content}
+            accent={t.accent}
+            visible={detailOpen}
+            progress={liquid.progress}
+            onClose={closeDetail}
+            onCloseDragStart={onCloseDragStart}
+          />
+        </div>
       )}
 
       {/* Tweaks panel */}
@@ -426,18 +419,12 @@ function App() {
             onChange={(v) => setTweak('wheelSpacing', v)}
           />
         </TweakSection>
-        <TweakSection label="Liquid">
-          <TweakRadio
-            label="Style"
-            value={t.liquid}
-            options={LIQUID_OPTIONS}
-            onChange={(v) => setTweak('liquid', v)}
-          />
+        <TweakSection label="Sheet">
           <TweakButton
             label="Preview swipe-up"
             onClick={() => {
-              setLiquid({ active: true, progress: 0, origin: { x: W / 2, y: H * 0.7 } });
-              animateProgress(0, 1, 900, () => setDetailOpen(true));
+              setLiquid({ active: true, progress: 0, origin: null });
+              animateProgress(0, 1, 520, () => setDetailOpen(true));
             }}
           />
         </TweakSection>

@@ -31,8 +31,12 @@ function DetailView({ section, content, accent, onClose, onCloseDragStart, visib
     add();
   };
 
-  // Opacity follows progress during drag-to-close (visible=false but progress > 0)
-  const contentOpacity = visible ? 1 : Math.max(0, (progress - 0.55) / 0.45);
+  // Content fades in/out with the sheet's vertical travel. We start showing
+  // the content early (~15% open) so it reads as part of the dragged card,
+  // not something that snaps in after the sheet is already in place.
+  const contentOpacity = visible
+    ? 1
+    : Math.max(0, Math.min(1, (progress - 0.15) / 0.35));
 
   return (
     <div
