@@ -41,13 +41,39 @@ const TYPEFACES = {
 };
 
 function useViewport() {
-  const [vp, setVp] = React.useState(() => ({
-    w: window.innerWidth, h: window.innerHeight,
-  }));
+  // Prefer visualViewport when available — it reflects the *actually visible*
+  // area (after browser chrome, keyboard, fold state) and updates on Fold
+  // transitions where `window.innerHeight` sometimes reports a stale value
+  // from the previously-active screen.
+  const read = () => {
+    if (typeof window === 'undefined') return { w: 0, h: 0 };
+    const vv = window.visualViewport;
+    return vv
+      ? { w: Math.round(vv.width), h: Math.round(vv.height) }
+      : { w: window.innerWidth, h: window.innerHeight };
+  };
+  const [vp, setVp] = React.useState(read);
   React.useEffect(() => {
-    const onR = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    const onR = () => setVp(read());
     window.addEventListener('resize', onR);
-    return () => window.removeEventListener('resize', onR);
+    window.addEventListener('orientationchange', onR);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', onR);
+    }
+    // Some foldable launches paint once with stale dimensions cached from
+    // the previously-active screen, then settle a frame or two later — kick
+    // a re-measure once we're mounted to catch the corrected size.
+    const t1 = setTimeout(onR, 60);
+    const t2 = setTimeout(onR, 300);
+    return () => {
+      window.removeEventListener('resize', onR);
+      window.removeEventListener('orientationchange', onR);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', onR);
+      }
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, []);
   return vp;
 }
