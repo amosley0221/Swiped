@@ -1,32 +1,26 @@
-// sync.js — Firebase Auth + Firestore cross-device sync layer for Swiped.
+// sync.js — Supabase Auth + Postgres cross-device sync layer for Swiped.
 //
-// Mirrors every persisted localStorage key to a single per-user Firestore
-// document at /users/{uid}. Local writes go up to the cloud (debounced).
-// Cloud changes come back via onSnapshot, get written to localStorage, and
-// then dispatched as a `swiped-state-external` event so the
-// usePersistedState / useTweaks hooks in tweaks-panel.jsx can refresh.
+// Mirrors every persisted localStorage key to a single per-user row in the
+// `user_data` table (one big `data` jsonb column). Local writes go up to
+// Supabase (debounced); cloud changes come back via a Realtime channel,
+// get written to localStorage, and then dispatched as a
+// `swiped-state-external` event so the usePersistedState / useTweaks
+// hooks in tweaks-panel.jsx pick them up without a refresh.
 //
-// Auth: Google one-tap via signInWithRedirect (works in iOS / Android PWA
-// standalone where popups are blocked) plus email magic-link as fallback.
-//
-// All state stays in localStorage so the app keeps working offline; the
-// cloud is best-effort. Firestore offline persistence queues writes while
-// disconnected and flushes when reconnected.
+// Auth: Google OAuth via signInWithOAuth (no third-party-cookie issues
+// here — the redirect token comes back in the URL hash and is stored in
+// first-party localStorage by the SDK, so iOS Safari standalone PWA
+// works without any extra setup) + email magic-link as a fallback.
 
 (function () {
   if (typeof window === 'undefined') return;
 
-  const FIREBASE_CONFIG = {
-    apiKey: 'AIzaSyD9ZWGfiw0Ufw57Jv4o4f7e7oo1qCWC1kU',
-    authDomain: 'swipe-planner-6ca65.firebaseapp.com',
-    projectId: 'swipe-planner-6ca65',
-    storageBucket: 'swipe-planner-6ca65.firebasestorage.app',
-    messagingSenderId: '397713605550',
-    appId: '1:397713605550:web:d93664f148a7f7f8ae3e3f',
-  };
+  const SUPABASE_URL = 'https://vzvhokeusirmfdphibny.supabase.co';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_dtiuT84yho_7NDUJUyEk9Q_XXZhmGdF';
 
-  // localStorage key → Firestore field name. Add a new entry here whenever
-  // you add another persisted key; everything else is automatic.
+  // localStorage key → field name inside the user_data.data jsonb blob.
+  // Add a new entry whenever you add another persisted key; everything
+  // else (Realtime push, debounced upload, first-time seeding) follows.
   const SYNCED = {
     'swiped.tweaks':                  'tweaks',
     'swiped.school.semesters':        'schoolSemesters',
@@ -39,13 +33,10 @@
   };
   const LS_TO_FIELD = SYNCED;
   const FIELD_TO_LS = Object.fromEntries(Object.entries(SYNCED).map(([ls, f]) => [f, ls]));
-  const PENDING_EMAIL_KEY = 'swiped.auth.pendingEmail';
 
-  let auth = null;
-  let db = null;
+  let client = null;
   let currentUser = null;
-  let userDocRef = null;
-  let unsubscribe = null;
+  let realtimeSub = null;
   let suppressLocalUntil = 0;          // ignore swiped-state-set briefly after a remote push
   const pendingWrite = {};
   let writeTimer = null;
@@ -60,20 +51,21 @@
   }
 
   function init() {
-    if (typeof firebase === 'undefined') {
-      console.warn('[swiped-sync] Firebase SDK not on window — sync disabled');
+    if (typeof supabase === 'undefined' || !supabase.createClient) {
+      console.warn('[swiped-sync] Supabase SDK not on window — sync disabled');
       return;
     }
     try {
-      firebase.initializeApp(FIREBASE_CONFIG);
-      auth = firebase.auth();
-      db = firebase.firestore();
-      try {
-        // Persistent cache — writes queue offline, reads come from cache. The
-        // synchronizeTabs flag lets us share the cache between multiple tabs
-        // / PWA windows. Failure is harmless (multi-tab fallback).
-        db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
-      } catch (e) { /* ignore */ }
+      client = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          // Detect OAuth + magic-link redirects automatically. The SDK reads
+          // the token out of the URL hash, exchanges it for a session, and
+          // strips the URL.
+          detectSessionInUrl: true,
+        },
+      });
     } catch (e) {
       console.error('[swiped-sync] init failed', e);
       lastError = e;
@@ -84,90 +76,129 @@
 
     // Wire local-state listeners. usePersistedState / useTweaks both fire
     // 'swiped-state-set' on every change; we batch those up and push to
-    // Firestore on a 600ms debounce.
+    // Supabase on a 600ms debounce.
     window.addEventListener('swiped-state-set', onLocalStateSet);
-    // Cross-tab localStorage changes fire 'storage'. Treat them like local
-    // state sets so writes from another tab also sync upstream.
     window.addEventListener('storage', onStorageEvent);
 
-    // Complete email-link sign-in if the user arrived from a magic link.
-    completeEmailLinkSignIn().catch(() => {});
+    // Subscribe to auth state changes (fires immediately with current
+    // session, then on every sign-in / sign-out / token refresh).
+    client.auth.onAuthStateChange((_event, session) => {
+      handleAuthChange((session && session.user) || null);
+    });
 
-    auth.onAuthStateChanged(handleAuthChange);
-
-    // After signInWithRedirect bounces back, resolve the result so any
-    // error surfaces. Firebase's own internal state has the user already.
-    auth.getRedirectResult().catch((err) => {
-      lastError = err;
-      console.warn('[swiped-sync] redirect result error', err);
+    // Kick off an initial getSession to settle persistSession / OAuth
+    // callback resolution. onAuthStateChange will also fire for this; the
+    // second call is a no-op.
+    client.auth.getSession().then(({ data, error }) => {
+      if (error) console.warn('[swiped-sync] getSession error', error);
+      const user = data && data.session && data.session.user;
+      if (user) handleAuthChange(user);
+    }).catch((err) => {
+      console.warn('[swiped-sync] getSession threw', err);
     });
   }
 
-  function handleAuthChange(user) {
+  async function handleAuthChange(user) {
+    const sameUser = currentUser && user && currentUser.id === user.id;
     currentUser = user;
-    if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+    if (!sameUser && realtimeSub) {
+      try { await realtimeSub.unsubscribe(); } catch { /* ignore */ }
+      realtimeSub = null;
+    }
     if (!user) {
-      userDocRef = null;
       status = 'idle';
       emitStatus();
       return;
     }
-    userDocRef = db.collection('users').doc(user.uid);
+    if (sameUser && realtimeSub) {
+      // Token refresh fired onAuthStateChange — nothing to re-sync.
+      return;
+    }
     status = 'syncing';
     emitStatus();
 
-    // First-time seeding: if the user has localStorage data but no Firestore
-    // doc yet, upload the local state so signing in on this device doesn't
-    // wipe their work.
-    userDocRef.get().then((snap) => {
-      if (!snap.exists) {
+    // First-time seeding: if this user has localStorage data but no row
+    // yet, upload the local state so signing in on the device you've been
+    // using doesn't wipe anything. Otherwise pull the cloud data down.
+    try {
+      const { data: existing, error: selErr } = await client
+        .from('user_data')
+        .select('data')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (selErr) {
+        console.warn('[swiped-sync] initial select failed', selErr);
+        lastError = selErr;
+        status = 'error';
+        emitStatus();
+      } else if (!existing) {
         const seed = {};
         for (const lsKey of Object.keys(LS_TO_FIELD)) {
           const raw = localStorage.getItem(lsKey);
           if (raw == null) continue;
           try { seed[LS_TO_FIELD[lsKey]] = JSON.parse(raw); } catch { /* skip */ }
         }
-        seed._meta = {
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        };
-        return userDocRef.set(seed);
-      }
-    }).catch((err) => { console.warn('[swiped-sync] seed failed', err); });
-
-    // Subscribe to changes. Snapshots arrive both for our own writes (cheap)
-    // and remote ones from other devices.
-    unsubscribe = userDocRef.onSnapshot((snap) => {
-      if (!snap.exists) return;
-      const data = snap.data() || {};
-      suppressLocalUntil = Date.now() + 1500;
-      let touched = 0;
-      for (const field of Object.keys(data)) {
-        if (field === '_meta') continue;
-        const lsKey = FIELD_TO_LS[field];
-        if (!lsKey) continue;
-        const value = data[field];
-        try {
-          const serialized = JSON.stringify(value);
-          if (localStorage.getItem(lsKey) !== serialized) {
-            localStorage.setItem(lsKey, serialized);
-            window.dispatchEvent(new CustomEvent('swiped-state-external', {
-              detail: { key: lsKey, value },
-            }));
-            touched++;
-          }
-        } catch (e) {
-          console.warn('[swiped-sync] apply failed for', lsKey, e);
+        const { error: insErr } = await client
+          .from('user_data')
+          .insert({ user_id: user.id, data: seed });
+        if (insErr && insErr.code !== '23505') { // 23505 = unique violation race; ignore
+          console.warn('[swiped-sync] initial insert failed', insErr);
+          lastError = insErr;
+          status = 'error';
+          emitStatus();
         }
+      } else {
+        applyRemoteData(existing.data || {});
       }
-      lastSyncedAt = Date.now();
-      emitStatus();
-    }, (err) => {
-      console.warn('[swiped-sync] subscription error', err);
-      lastError = err;
-      status = 'error';
-      emitStatus();
-    });
+    } catch (e) {
+      console.warn('[swiped-sync] seed/load failed', e);
+    }
+
+    // Subscribe to Realtime updates on this user's row. INSERT covers the
+    // race where another tab / device created the row first; UPDATE
+    // covers every subsequent edit.
+    realtimeSub = client
+      .channel(`user_data:${user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'user_data',
+        filter: `user_id=eq.${user.id}`,
+      }, (payload) => {
+        const data = (payload && payload.new && payload.new.data) || {};
+        applyRemoteData(data);
+      })
+      .subscribe((s) => {
+        // 'SUBSCRIBED' once the channel is live; anything else is in-flight.
+        if (s === 'SUBSCRIBED') {
+          lastSyncedAt = Date.now();
+          status = 'syncing';
+          emitStatus();
+        }
+      });
+  }
+
+  function applyRemoteData(data) {
+    if (!data || typeof data !== 'object') return;
+    suppressLocalUntil = Date.now() + 1500;
+    for (const field of Object.keys(data)) {
+      const lsKey = FIELD_TO_LS[field];
+      if (!lsKey) continue;
+      const value = data[field];
+      try {
+        const serialized = JSON.stringify(value);
+        if (localStorage.getItem(lsKey) !== serialized) {
+          localStorage.setItem(lsKey, serialized);
+          window.dispatchEvent(new CustomEvent('swiped-state-external', {
+            detail: { key: lsKey, value },
+          }));
+        }
+      } catch (e) {
+        console.warn('[swiped-sync] apply failed for', lsKey, e);
+      }
+    }
+    lastSyncedAt = Date.now();
+    emitStatus();
   }
 
   function onLocalStateSet(e) {
@@ -180,7 +211,6 @@
   }
 
   function onStorageEvent(e) {
-    // Cross-tab change. Re-read the value and queue.
     if (!e.key || !(e.key in LS_TO_FIELD)) return;
     try {
       const raw = localStorage.getItem(e.key);
@@ -190,81 +220,109 @@
   }
 
   function queueWrite(field, value) {
-    if (!currentUser || !userDocRef) return;
+    if (!currentUser) return;
     pendingWrite[field] = value;
     if (writeTimer) clearTimeout(writeTimer);
     writeTimer = setTimeout(flushWrites, 600);
   }
 
-  function flushWrites() {
+  async function flushWrites() {
     writeTimer = null;
-    if (!currentUser || !userDocRef) return;
-    const keys = Object.keys(pendingWrite);
-    if (keys.length === 0) return;
-    const payload = {};
-    for (const k of keys) payload[k] = pendingWrite[k];
-    payload._meta = { updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-    for (const k of keys) delete pendingWrite[k];
-    userDocRef.set(payload, { merge: true }).catch((err) => {
-      console.warn('[swiped-sync] write failed', err);
-    });
+    if (!currentUser || !client) return;
+    const fields = Object.keys(pendingWrite);
+    if (fields.length === 0) return;
+
+    // Build the full data blob from the latest localStorage state and
+    // overlay any pending writes (covers the case where a write landed
+    // but the listener didn't fire). We send the entire object on every
+    // flush — last-write-wins is fine for the data shapes here, and it's
+    // simpler than per-field jsonb merges.
+    const merged = {};
+    for (const lsKey of Object.keys(LS_TO_FIELD)) {
+      const raw = localStorage.getItem(lsKey);
+      if (raw == null) continue;
+      try { merged[LS_TO_FIELD[lsKey]] = JSON.parse(raw); } catch { /* skip */ }
+    }
+    for (const f of fields) merged[f] = pendingWrite[f];
+    for (const f of fields) delete pendingWrite[f];
+
+    try {
+      const { error } = await client
+        .from('user_data')
+        .upsert({
+          user_id: currentUser.id,
+          data: merged,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      if (error) {
+        console.warn('[swiped-sync] upsert failed', error);
+        lastError = error;
+        status = 'error';
+        emitStatus();
+      } else {
+        lastSyncedAt = Date.now();
+        emitStatus();
+      }
+    } catch (e) {
+      console.warn('[swiped-sync] upsert threw', e);
+      lastError = e;
+      status = 'error';
+      emitStatus();
+    }
   }
 
   // ── Sign-in helpers ────────────────────────────────────────────────────
 
-  function signInGoogle() {
-    if (!auth) return Promise.reject(new Error('Sync not initialized'));
-    const provider = new firebase.auth.GoogleAuthProvider();
+  async function signInGoogle() {
+    if (!client) return Promise.reject(new Error('Sync not initialized'));
     status = 'signing-in';
     emitStatus();
-    return auth.signInWithRedirect(provider);
+    const { error } = await client.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + window.location.pathname,
+      },
+    });
+    if (error) {
+      lastError = error;
+      status = 'error';
+      emitStatus();
+      throw error;
+    }
   }
 
-  function sendMagicLink(email) {
-    if (!auth) return Promise.reject(new Error('Sync not initialized'));
+  async function sendMagicLink(email) {
+    if (!client) return Promise.reject(new Error('Sync not initialized'));
     if (!email || !email.trim()) return Promise.reject(new Error('Email is required'));
-    const settings = {
-      url: window.location.origin + window.location.pathname,
-      handleCodeInApp: true,
-    };
     status = 'signing-in';
     emitStatus();
-    return auth.sendSignInLinkToEmail(email.trim(), settings).then(() => {
-      try { localStorage.setItem(PENDING_EMAIL_KEY, email.trim()); } catch { /* ignore */ }
+    try {
+      const { error } = await client.auth.signInWithOtp({
+        email: email.trim(),
+        options: {
+          emailRedirectTo: window.location.origin + window.location.pathname,
+          shouldCreateUser: true,
+        },
+      });
+      if (error) {
+        lastError = error;
+        status = 'error';
+        emitStatus();
+        throw error;
+      }
       status = 'sent-email';
       emitStatus();
-    }).catch((err) => {
-      lastError = err;
+    } catch (e) {
+      lastError = e;
       status = 'error';
       emitStatus();
-      throw err;
-    });
-  }
-
-  function completeEmailLinkSignIn() {
-    if (!auth || !auth.isSignInWithEmailLink(window.location.href)) return Promise.resolve();
-    let email = null;
-    try { email = localStorage.getItem(PENDING_EMAIL_KEY); } catch { /* ignore */ }
-    if (!email) {
-      email = window.prompt('Confirm the email you used to sign in:');
+      throw e;
     }
-    if (!email) return Promise.resolve();
-    return auth.signInWithEmailLink(email, window.location.href).then(() => {
-      try { localStorage.removeItem(PENDING_EMAIL_KEY); } catch { /* ignore */ }
-      // Strip the magic-link query params so refreshing doesn't try again.
-      const clean = window.location.origin + window.location.pathname;
-      window.history.replaceState({}, '', clean);
-    }).catch((err) => {
-      lastError = err;
-      status = 'error';
-      emitStatus();
-      console.warn('[swiped-sync] magic-link sign-in failed', err);
-    });
   }
 
-  function signOut() {
-    if (!auth) return Promise.resolve();
-    return auth.signOut();
+  async function signOut() {
+    if (!client) return;
+    return client.auth.signOut();
   }
 
   // Public surface — used by settings.jsx to render the sign-in UI.
@@ -278,7 +336,7 @@
     get lastSyncedAt() { return lastSyncedAt; },
   };
 
-  // Auto-init. Firebase scripts are loaded synchronously before this one in
-  // Swiped.html, so window.firebase is ready by the time we run.
+  // Auto-init. Supabase script is loaded synchronously before this one in
+  // Swiped.html, so window.supabase is ready by the time we run.
   init();
 })();

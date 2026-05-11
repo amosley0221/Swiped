@@ -34,13 +34,11 @@
 <body>
   <div id="root"></div>
 
-  <!-- Firebase compat SDK — provides window.firebase for sync.js. Loaded
-       synchronously so it's ready before sync.js runs. -->
-  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
-  <!-- sync.js auto-initializes Firebase, attaches auth listeners, and bridges
-       the swiped-state-set / swiped-state-external pub/sub to Firestore. -->
+  <!-- Supabase JS SDK — provides window.supabase.createClient for sync.js. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <!-- sync.js auto-initializes Supabase, attaches auth listeners, and
+       bridges the swiped-state-set / swiped-state-external pub/sub to a
+       per-user row in the user_data table. -->
   <script src="sync.js"></script>
 
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
