@@ -104,8 +104,10 @@ function App() {
   const [targetIdx, setTargetIdx] = React.useState(0);
   const [idx, setIdxDirect] = useTweenIndex(targetIdx);
 
-  // Liquid gesture
-  const [liquid, setLiquid] = React.useState({ active: false, progress: 0, origin: null });
+  // Sheet gesture state. `finger` is the live (or last) pointer position;
+  // `progress` is the open ratio (0=hidden, 1=fully covering). Together they
+  // drive the curved sheet path: peak rides at `finger`, edges trail below.
+  const [liquid, setLiquid] = React.useState({ active: false, progress: 0, finger: null });
   const [detailOpen, setDetailOpen] = React.useState(false);
   const liquidRef = React.useRef(liquid);
   liquidRef.current = liquid;
@@ -122,16 +124,16 @@ function App() {
 
   const [pulseKey, setPulseKey] = React.useState(0);
 
-  // Sheet gesture: the section panel tracks the finger 1:1. Drag up from the
-  // wheel and the black sheet rises by the same distance your finger travels;
-  // past the halfway mark (or a quick fling), it commits open.
+  // Elastic open: the peak of the sheet's top edge tracks the finger; the
+  // edges trail with a lag that shrinks as progress nears 1. Past the
+  // halfway mark (or a quick upward fling) it commits open.
   const onLiquidStart = ({ startX, startY }) => {
-    setLiquid({ active: true, progress: 0, origin: null });
+    setLiquid({ active: true, progress: 0, finger: { x: startX, y: startY } });
     const startTime = performance.now();
     const move = (ev) => {
       const dy = startY - ev.clientY;
       const p = Math.max(0, Math.min(1, dy / H));
-      setLiquid((l) => ({ ...l, progress: p }));
+      setLiquid((l) => ({ ...l, progress: p, finger: { x: ev.clientX, y: ev.clientY } }));
     };
     const up = (ev) => {
       window.removeEventListener('pointermove', move);
@@ -139,12 +141,12 @@ function App() {
       const dy = startY - (ev.clientY ?? startY);
       const elapsed = performance.now() - startTime;
       const velocity = dy / Math.max(50, elapsed);
-      const finalProgress = liquidRef.current.progress;
-      if (finalProgress > 0.45 || (velocity > 1.2 && finalProgress > 0.15)) {
-        animateProgress(finalProgress, 1, 240, () => setDetailOpen(true));
+      const cur = liquidRef.current;
+      if (cur.progress > 0.45 || (velocity > 1.2 && cur.progress > 0.15)) {
+        animateSheet(cur, { progress: 1, fingerY: 0 }, 280, () => setDetailOpen(true));
       } else {
-        animateProgress(finalProgress, 0, 220, () => {
-          setLiquid({ active: false, progress: 0, origin: null });
+        animateSheet(cur, { progress: 0, fingerY: H }, 220, () => {
+          setLiquid({ active: false, progress: 0, finger: null });
         });
       }
     };
@@ -152,16 +154,20 @@ function App() {
     window.addEventListener('pointerup', up);
   };
 
-  const animateProgress = (from, to, duration, done) => {
-    const start = performance.now();
+  // Tween both progress AND finger.y to targets simultaneously. Needed so the
+  // curved peak flattens to the top (or sinks to the bottom) during snaps.
+  const animateSheet = (from, target, duration, done) => {
+    const startT = performance.now();
+    const fromP = from.progress;
+    const fromY = from.finger?.y ?? H;
+    const fingerX = from.finger?.x ?? W / 2;
+    const opening = target.progress > fromP;
     const tick = () => {
-      const elapsed = performance.now() - start;
-      const k = Math.min(1, elapsed / duration);
-      const eased = to > from
-        ? 1 - Math.pow(1 - k, 3)
-        : Math.pow(k, 2);
-      const p = from + (to - from) * eased;
-      setLiquid((l) => ({ ...l, progress: p }));
+      const k = Math.min(1, (performance.now() - startT) / duration);
+      const eased = opening ? 1 - Math.pow(1 - k, 3) : Math.pow(k, 2);
+      const p = fromP + (target.progress - fromP) * eased;
+      const fy = fromY + (target.fingerY - fromY) * eased;
+      setLiquid((l) => ({ ...l, progress: p, finger: { x: fingerX, y: fy } }));
       if (k < 1) requestAnimationFrame(tick);
       else done && done();
     };
@@ -170,29 +176,30 @@ function App() {
 
   const closeDetail = () => {
     setDetailOpen(false);
-    animateProgress(1, 0, 380, () => {
-      setLiquid({ active: false, progress: 0, origin: null });
+    animateSheet(liquidRef.current, { progress: 0, fingerY: H }, 320, () => {
+      setLiquid({ active: false, progress: 0, finger: null });
     });
   };
 
-  // Drag-down to close: grab the top handle (or X) and pull the sheet down.
-  // The sheet's vertical offset tracks the finger 1:1; past the halfway point
-  // (or a quick downward fling) it commits closed.
+  // Elastic close: grab the top handle (or X) and pull the sheet down. The
+  // peak follows the finger, edges trail behind. Past the halfway point (or a
+  // quick downward fling) it commits closed.
   const onCloseDragStart = (e) => {
     e.preventDefault();
+    const startX = e.clientX;
     const startY = e.clientY;
     const startTime = performance.now();
     let moved = false;
     let lastY = startY;
     setDetailOpen(false);
-    setLiquid({ active: true, progress: 1, origin: null });
+    setLiquid({ active: true, progress: 1, finger: { x: startX, y: startY } });
 
     const move = (ev) => {
       lastY = ev.clientY;
       const dy = ev.clientY - startY;
       if (Math.abs(dy) > 4) moved = true;
       const p = Math.max(0, Math.min(1, 1 - dy / H));
-      setLiquid((l) => ({ ...l, progress: p }));
+      setLiquid((l) => ({ ...l, progress: p, finger: { x: ev.clientX, y: ev.clientY } }));
     };
     const up = (ev) => {
       window.removeEventListener('pointermove', move);
@@ -200,21 +207,20 @@ function App() {
       const dy = (ev.clientY ?? lastY) - startY;
       const elapsed = performance.now() - startTime;
       const velocity = dy / Math.max(50, elapsed); // positive = downward fling
+      const cur = liquidRef.current;
       if (!moved) {
-        // tap on the X: animate closed
-        animateProgress(liquidRef.current.progress, 0, 280, () => {
-          setLiquid({ active: false, progress: 0, origin: null });
+        animateSheet(cur, { progress: 0, fingerY: H }, 320, () => {
+          setLiquid({ active: false, progress: 0, finger: null });
         });
         return;
       }
-      const finalProgress = liquidRef.current.progress;
-      const commit = finalProgress < 0.55 || (velocity > 1.0 && finalProgress < 0.85);
+      const commit = cur.progress < 0.55 || (velocity > 1.0 && cur.progress < 0.85);
       if (commit) {
-        animateProgress(finalProgress, 0, 260, () => {
-          setLiquid({ active: false, progress: 0, origin: null });
+        animateSheet(cur, { progress: 0, fingerY: H }, 280, () => {
+          setLiquid({ active: false, progress: 0, finger: null });
         });
       } else {
-        animateProgress(finalProgress, 1, 220, () => setDetailOpen(true));
+        animateSheet(cur, { progress: 1, fingerY: 0 }, 220, () => setDetailOpen(true));
       }
     };
     window.addEventListener('pointermove', move);
@@ -259,6 +265,13 @@ function App() {
 
   // Brief content fade key (transitions when idx changes)
   const briefKey = safeIdx;
+
+  // Curved sheet outline shared by the background and the DetailView clip-path.
+  const sheetPathD = sheetPath({
+    progress: liquid.progress,
+    finger: liquid.finger,
+    W, H,
+  });
 
   return (
     <div
@@ -362,29 +375,41 @@ function App() {
       {/* Hint */}
       <SwipeHint visible={!liquid.active && !detailOpen} protrusion={protrusion} tf={tf} />
 
-      {/* Sheet — black panel that tracks the finger up/down */}
-      <LiquidReveal progress={liquid.progress} W={W} H={H} />
+      {/* Sheet — black curved panel. Top edge peaks at the finger; the edges
+          trail below by a lag that shrinks as the sheet nears fully open. */}
+      <LiquidReveal path={sheetPathD} progress={liquid.progress} />
 
-      {/* Detail content rides on top of the sheet and translates with it,
-          so dragging the handle drags the whole section. */}
+      {/* Detail content lives inside the same clip-path, so its visible edge
+          follows the curve. The inner div translates the content down to the
+          peak so text rides at the fingertip while the corners stretch up
+          from below along the curve. */}
       {(detailOpen || liquid.progress > 0.02) && (
         <div
           style={{
             position: 'absolute', inset: 0, zIndex: 40,
-            transform: `translate3d(0, ${(1 - liquid.progress) * H}px, 0)`,
+            clipPath: sheetPathD ? `path('${sheetPathD}')` : 'none',
+            WebkitClipPath: sheetPathD ? `path('${sheetPathD}')` : 'none',
             pointerEvents: detailOpen ? 'auto' : 'none',
-            willChange: 'transform',
+            willChange: 'clip-path',
           }}
         >
-          <DetailView
-            section={selected}
-            content={content}
-            accent={t.accent}
-            visible={detailOpen}
-            progress={liquid.progress}
-            onClose={closeDetail}
-            onCloseDragStart={onCloseDragStart}
-          />
+          <div
+            style={{
+              position: 'absolute', inset: 0,
+              transform: `translate3d(0, ${Math.max(0, liquid.finger?.y ?? 0)}px, 0)`,
+              willChange: 'transform',
+            }}
+          >
+            <DetailView
+              section={selected}
+              content={content}
+              accent={t.accent}
+              visible={detailOpen}
+              progress={liquid.progress}
+              onClose={closeDetail}
+              onCloseDragStart={onCloseDragStart}
+            />
+          </div>
         </div>
       )}
 
@@ -423,8 +448,9 @@ function App() {
           <TweakButton
             label="Preview swipe-up"
             onClick={() => {
-              setLiquid({ active: true, progress: 0, origin: null });
-              animateProgress(0, 1, 520, () => setDetailOpen(true));
+              const start = { progress: 0, finger: { x: W / 2, y: H - 200 } };
+              setLiquid({ active: true, ...start });
+              animateSheet(start, { progress: 1, fingerY: 0 }, 600, () => setDetailOpen(true));
             }}
           />
         </TweakSection>

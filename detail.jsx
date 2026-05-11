@@ -31,12 +31,10 @@ function DetailView({ section, content, accent, onClose, onCloseDragStart, visib
     add();
   };
 
-  // Content fades in/out with the sheet's vertical travel. We start showing
-  // the content early (~15% open) so it reads as part of the dragged card,
-  // not something that snaps in after the sheet is already in place.
-  const contentOpacity = visible
-    ? 1
-    : Math.max(0, Math.min(1, (progress - 0.15) / 0.35));
+  // The wrapper clips this view to the curved sheet outline, so content is
+  // already revealed along the curve as it stretches up. No opacity fade
+  // needed — just stay fully drawn while the sheet is active.
+  const contentOpacity = 1;
 
   return (
     <div
