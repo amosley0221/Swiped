@@ -503,10 +503,12 @@ function monthlyNetIncome(item) {
   return gross * (1 - rate / 100);
 }
 
-// Given a subscription with a `renewalDate` (YYYY-MM-DD) and `frequency`
-// ('monthly' | 'yearly'), return the next upcoming Date — rolling the
-// stored date forward in increments of the frequency until it's ≥ today.
-// Returns null when the input is missing or malformed.
+// Given an object with a `renewalDate` (YYYY-MM-DD) and `frequency`
+// ('monthly' | 'yearly' | 'one-time'), return the next upcoming Date —
+// rolling the stored date forward in increments of the frequency until
+// it's ≥ today. 'one-time' returns the parsed date as-is (no advance).
+// Returns null when the input is missing or malformed. Also used by the
+// bills table, which passes { renewalDate: bill.dueDate, frequency }.
 function nextRenewal(sub) {
   if (!sub || !sub.renewalDate) return null;
   const parts = sub.renewalDate.split('-').map((n) => parseInt(n, 10));
@@ -514,6 +516,7 @@ function nextRenewal(sub) {
   if (!y || !mo || !d) return null;
   const date = new Date(y, mo - 1, d);
   if (isNaN(+date)) return null;
+  if (sub.frequency === 'one-time') return date;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   let safety = 0;
   while (date < today && safety++ < 1200) {

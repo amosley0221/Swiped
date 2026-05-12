@@ -1867,10 +1867,18 @@ function BudgetDetails({ data, setData, accent }) {
   const totalBalance = safe.accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
   const monthlyIncomeNet = safe.income.reduce((s, i) => s + monthlyNetIncome(i), 0);
   const yearlyIncomeNet = monthlyIncomeNet * 12;
-  const billsTotal = safe.bills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
-  // Bills don't carry a frequency field; treat the list as monthly recurring
-  // (rent / utilities / etc.) for the yearly projection.
-  const yearlyBills = billsTotal * 12;
+  // Bills now carry a frequency (default 'monthly'). 'one-time' entries
+  // don't recur and are excluded from the yearly projection (but still
+  // surface in Due ≤7d). 'yearly' amounts are divided by 12.
+  const billsMonthly = safe.bills.reduce((s, b) => {
+    const amt = Number(b.amount) || 0;
+    const f = b.frequency || 'monthly';
+    if (f === 'yearly') return s + amt / 12;
+    if (f === 'one-time') return s;
+    return s + amt;
+  }, 0);
+  const yearlyBills = billsMonthly * 12;
+  const billsTotal = billsMonthly; // alias used in Year Overview below
   // Subscriptions normalize Monthly + Yearly entries to a single monthly
   // figure (yearly ÷ 12), then flow into the Year Overview alongside bills.
   const subsMonthly = (safe.subscriptions || []).reduce((s, sub) => {
@@ -1878,7 +1886,7 @@ function BudgetDetails({ data, setData, accent }) {
     return s + (sub.frequency === 'yearly' ? amt / 12 : amt);
   }, 0);
   const subsYearly = subsMonthly * 12;
-  const monthlyOut = billsTotal + subsMonthly;
+  const monthlyOut = billsMonthly + subsMonthly;
   const yearlyOut = yearlyBills + subsYearly;
   const monthlyNet = monthlyIncomeNet - monthlyOut;
   const yearlyNet = monthlyNet * 12;
@@ -1926,11 +1934,16 @@ function BudgetDetails({ data, setData, accent }) {
   };
 
   // Sort bills by due date ascending; ones without a date drift to the bottom.
+  // Sort bills by their *next* upcoming date (after auto-advancing past
+  // monthly / yearly dates forward) so the row at the top is whatever's
+  // really due next, not whatever's stored. Bills with no date sink.
   const sortedBills = safe.bills.slice().sort((a, b) => {
-    if (!a.dueDate && !b.dueDate) return 0;
-    if (!a.dueDate) return 1;
-    if (!b.dueDate) return -1;
-    return a.dueDate.localeCompare(b.dueDate);
+    const da = nextRenewal({ renewalDate: a.dueDate, frequency: a.frequency || 'monthly' });
+    const db = nextRenewal({ renewalDate: b.dueDate, frequency: b.frequency || 'monthly' });
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return da - db;
   });
 
   // Mini row used inside the Year overview card.
@@ -2200,47 +2213,112 @@ function BudgetDetails({ data, setData, accent }) {
         </button>
       </div>
 
-      {/* Upcoming bills — sorted by due date so the next bill bubbles up. */}
+      {/* Upcoming bills — sorted by the *next* date after frequency
+          advance, so monthly / yearly bills self-update. */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <SectionTitle>Upcoming bills</SectionTitle>
           <span style={sumStyle}>
-            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(billsTotal)}</span>&nbsp;total
+            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(billsMonthly)}</span>&nbsp;/ mo
+            &nbsp;·&nbsp;
+            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(yearlyBills)}</span>&nbsp;/ yr
           </span>
         </div>
-        {sortedBills.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 140px 28px', gap: 8 }}>
-            <div style={colHeadStyle}>Name</div>
-            <div style={{ ...colHeadStyle, textAlign: 'right' }}>Amount</div>
-            <div style={colHeadStyle}>Due</div>
-            <div />
-          </div>
-        )}
-        {sortedBills.map((b) => (
-          <div key={b.id} style={{
-            display: 'grid', gridTemplateColumns: '1fr 110px 140px 28px',
-            gap: 8, marginBottom: 8, alignItems: 'center',
-          }}>
-            <input
-              value={b.name} placeholder="Rent"
-              onChange={(e) => updateRow('bills', b.id, { name: e.target.value })}
-              style={baseField}
-            />
-            <input
-              type="number" inputMode="decimal" step="0.01"
-              value={b.amount ?? ''} placeholder="0.00"
-              onChange={(e) => updateRow('bills', b.id, { amount: e.target.value })}
-              style={moneyField}
-            />
-            <input
-              type="date" value={b.dueDate || ''}
-              onChange={(e) => updateRow('bills', b.id, { dueDate: e.target.value })}
-              style={{ ...baseField, colorScheme: 'dark' }}
-            />
-            <button onClick={() => removeRow('bills', b.id)} aria-label="Remove" style={xBtn}>×</button>
-          </div>
-        ))}
-        <button onClick={() => addRow('bills', { name: '', amount: '', dueDate: '' })} style={addBtn}>
+        {sortedBills.map((b) => {
+          const next = nextRenewal({ renewalDate: b.dueDate, frequency: b.frequency || 'monthly' });
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const daysAway = next ? Math.round((next - today) / 86_400_000) : null;
+          const overdue = daysAway != null && daysAway < 0;
+          return (
+            <div key={b.id} style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '0.5px solid rgba(255,255,255,0.12)',
+              borderRadius: 12, padding: 12, marginBottom: 10,
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 28px', gap: 8, alignItems: 'center' }}>
+                <input
+                  value={b.name} placeholder="Rent, Electric, Internet, …"
+                  onChange={(e) => updateRow('bills', b.id, { name: e.target.value })}
+                  style={baseField}
+                />
+                <button onClick={() => removeRow('bills', b.id)} aria-label="Remove" style={xBtn}>×</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={colHeadStyle}>Amount</div>
+                  <input
+                    type="number" inputMode="decimal" step="0.01"
+                    value={b.amount ?? ''} placeholder="0.00"
+                    onChange={(e) => updateRow('bills', b.id, { amount: e.target.value })}
+                    style={moneyField}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={colHeadStyle}>Frequency</div>
+                  <select
+                    value={b.frequency || 'monthly'}
+                    onChange={(e) => {
+                      const freq = e.target.value;
+                      // Re-roll the stored date for the new frequency (skip
+                      // for one-time, which keeps the original date).
+                      const merged = { ...b, frequency: freq };
+                      const rolled = freq === 'one-time'
+                        ? b.dueDate
+                        : nextRenewalISO({ renewalDate: b.dueDate, frequency: freq });
+                      const patch = { frequency: freq };
+                      if (rolled) patch.dueDate = rolled;
+                      updateRow('bills', b.id, patch);
+                    }}
+                    style={{
+                      ...baseField, appearance: 'none', WebkitAppearance: 'none',
+                      fontFamily: 'Geist, ui-sans-serif, system-ui',
+                    }}
+                  >
+                    <option value="monthly" style={{ background: '#15151A' }}>Monthly</option>
+                    <option value="yearly" style={{ background: '#15151A' }}>Yearly</option>
+                    <option value="one-time" style={{ background: '#15151A' }}>One-time</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={colHeadStyle}>Due</div>
+                  <input
+                    type="date"
+                    value={b.dueDate || ''}
+                    onChange={(e) => updateRow('bills', b.id, { dueDate: e.target.value })}
+                    onBlur={(e) => {
+                      if (!e.target.value) return;
+                      const freq = b.frequency || 'monthly';
+                      if (freq === 'one-time') return; // never advance one-times
+                      const rolled = nextRenewalISO({ renewalDate: e.target.value, frequency: freq });
+                      if (rolled && rolled !== e.target.value) {
+                        updateRow('bills', b.id, { dueDate: rolled });
+                      }
+                    }}
+                    style={{ ...baseField, colorScheme: 'dark' }}
+                  />
+                </div>
+              </div>
+              {next && (
+                <div style={{
+                  fontFamily: 'Geist Mono, ui-monospace, monospace',
+                  fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
+                  color: overdue ? '#E8704A'
+                    : daysAway != null && daysAway <= 7 ? '#E8C547'
+                    : 'rgba(250,128,114,0.45)',
+                  textAlign: 'right',
+                }}>
+                  {overdue ? `Overdue · was ${next.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                    : daysAway === 0 ? 'Due today'
+                    : daysAway === 1 ? 'Due tomorrow'
+                    : daysAway != null && daysAway <= 30 ? `Due in ${daysAway} days`
+                    : `Due ${next.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <button onClick={() => addRow('bills', { name: '', amount: '', dueDate: '', frequency: 'monthly' })} style={addBtn}>
           + Add bill
         </button>
       </div>

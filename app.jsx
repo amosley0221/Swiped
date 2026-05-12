@@ -517,10 +517,13 @@ function App() {
       const monthlyIncome = (bd.income || []).reduce((s, i) => s + monthlyNetIncome(i), 0);
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const sevenOut = new Date(today); sevenOut.setDate(today.getDate() + 7);
+      // Bills now carry a frequency too — nextRenewal advances stored
+      // monthly / yearly dates forward so a forgotten "2026-05-01" rent
+      // still surfaces correctly when its next-month due date hits the
+      // 7-day window. One-time bills don't auto-advance.
       const billsDue7d = (bd.bills || []).reduce((s, b) => {
-        if (!b.dueDate) return s;
-        const d = new Date(b.dueDate);
-        if (isNaN(+d)) return s;
+        const d = nextRenewal({ renewalDate: b.dueDate, frequency: b.frequency || 'monthly' });
+        if (!d) return s;
         if (d >= today && d <= sevenOut) return s + (Number(b.amount) || 0);
         return s;
       }, 0);
