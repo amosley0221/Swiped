@@ -113,9 +113,22 @@ const Icon = {
       <path d="M9 17h6" />
     </svg>
   ),
+  plane: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12c0-1-1-2-2-2h-4l-4-7h-3l2 7H6l-2-2H2l1.5 4L2 16h2l2-2h4l-2 7h3l4-7h4c1 0 2-1 2-2Z" />
+    </svg>
+  ),
+  utensils: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 3v8 M5 3v5a2 2 0 0 0 2 2 2 2 0 0 0 2-2V3" />
+      <path d="M7 11v10" />
+      <path d="M14 14v7" />
+      <path d="M14 14a4 4 0 0 1 0-8c2 0 3 1.5 3 4v4h-3Z" />
+    </svg>
+  ),
 };
 
-const ICON_KEYS = ['briefcase','dollar','cap','target','notebook','heart','leaf','check','book','calendar','dumbbell','home','code','music','spark','user','male','female'];
+const ICON_KEYS = ['briefcase','dollar','cap','target','notebook','heart','leaf','check','book','calendar','dumbbell','home','code','music','spark','user','male','female','plane','utensils'];
 
 // Brief copy + full data per section template. Keys map to TWEAK_DEFAULTS.sections[].iconKey.
 const SECTION_LIB = {
@@ -364,6 +377,79 @@ const SECTION_LIB = {
       { t: 'Sun', text: 'Started "The Tartar Steppe"' },
     ],
     note: 'Buzzati: the dread of routine. Pairs with my Camus essay.',
+  },
+  // Travel — upcoming trips with dates, confirmations, and a packing list.
+  // Brief shows time-to-next-trip or "Day X of Y" during a trip.
+  travel: {
+    icon: 'plane',
+    headline: 'Up next',
+    brief: 'No trips planned',
+    stats: [
+      { label: 'Next', value: '—' },
+      { label: 'Trips \'26', value: '0' },
+      { label: 'Days', value: '0' },
+    ],
+    trips: [
+      {
+        id: 1,
+        destination: 'Tokyo',
+        startDate: '2026-08-12',
+        endDate: '2026-08-20',
+        confirmations: 'UA 837 · Park Hyatt res #4421',
+        notes: 'Pasmo card on arrival. Robot restaurant Thursday.',
+        packing: [
+          { id: 1, item: 'Passport', packed: true },
+          { id: 2, item: 'Adapter (Type A)', packed: false },
+          { id: 3, item: 'Compression socks', packed: false },
+          { id: 4, item: 'Camera + extra SD', packed: false },
+        ],
+      },
+    ],
+  },
+  // Workouts — planned/logged sessions. Distinct from Health (passive
+  // metrics). Brief shows count + total minutes for the week.
+  workouts: {
+    icon: 'dumbbell',
+    headline: 'This week',
+    brief: '3 sessions · 2h 15m',
+    stats: [
+      { label: 'This wk', value: '3' },
+      { label: 'Minutes', value: '135' },
+      { label: 'Streak', value: '4d' },
+    ],
+    sessions: [
+      { id: 1, date: '2026-05-12', type: 'Run', duration: 32, notes: '5km · easy pace' },
+      { id: 2, date: '2026-05-11', type: 'Lift — push', duration: 55, notes: 'Bench 5x5 @ 165' },
+      { id: 3, date: '2026-05-09', type: 'Yoga', duration: 48, notes: 'Hip mobility flow' },
+    ],
+  },
+  // Meals & Groceries — weekly meal plan + a running grocery list. The
+  // grocery list is independent of the plan so you can add anything ad-hoc.
+  meals: {
+    icon: 'utensils',
+    headline: 'Tonight',
+    brief: 'Chicken bowls',
+    stats: [
+      { label: 'Planned', value: '5 / 7' },
+      { label: 'Grocery', value: '12 left' },
+      { label: 'Eating out', value: '2' },
+    ],
+    week: {
+      mon: { breakfast: 'Yogurt + granola', lunch: 'Leftover bowls', dinner: 'Chicken bowls' },
+      tue: { breakfast: 'Eggs + toast', lunch: 'Salad', dinner: 'Pasta primavera' },
+      wed: { breakfast: '', lunch: '', dinner: 'Tacos' },
+      thu: { breakfast: '', lunch: '', dinner: 'Out — sushi' },
+      fri: { breakfast: '', lunch: '', dinner: 'Pizza night' },
+      sat: { breakfast: '', lunch: '', dinner: '' },
+      sun: { breakfast: '', lunch: '', dinner: '' },
+    },
+    grocery: [
+      { id: 1, item: 'Chicken thighs', qty: '2 lb', got: false },
+      { id: 2, item: 'Greek yogurt', qty: '32 oz', got: false },
+      { id: 3, item: 'Spinach', qty: '1 bag', got: true },
+      { id: 4, item: 'Tomatoes', qty: '4', got: false },
+      { id: 5, item: 'Rice', qty: '1 bag', got: false },
+    ],
   },
 };
 

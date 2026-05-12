@@ -16,6 +16,9 @@ function DetailView({
   homeData, setHomeData,
   budgetData, setBudgetData,
   healthData, setHealthData,
+  travelData, setTravelData,
+  workoutsData, setWorkoutsData,
+  mealsData, setMealsData,
   icsEvents, icsLinks,
   scale = 1,
 }) {
@@ -30,6 +33,9 @@ function DetailView({
   const isHome = (section.contentKey || section.id) === 'home';
   const isBudget = (section.contentKey || section.id) === 'budget';
   const isHealth = (section.contentKey || section.id) === 'health';
+  const isTravel = (section.contentKey || section.id) === 'travel';
+  const isWorkouts = (section.contentKey || section.id) === 'workouts';
+  const isMeals = (section.contentKey || section.id) === 'meals';
   // Both work and school run the weekly view (calendar + per-week
   // tasks/log/note + horizontal swipe between weeks).
   const isWeekly = isSchool || isWork;
@@ -212,8 +218,8 @@ function DetailView({
         </div>
       </div>
 
-      {/* Quick-add — hidden for person, home, budget, and health sections, which have their own editors */}
-      {!isPerson && !isHome && !isBudget && !isHealth && (
+      {/* Quick-add — hidden for sections with their own editors */}
+      {!isPerson && !isHome && !isBudget && !isHealth && !isTravel && !isWorkouts && !isMeals && (
         <form onSubmit={onSubmit} style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '10px 12px', borderRadius: 14,
@@ -324,6 +330,27 @@ function DetailView({
             sectionId={section.id}
             healthData={healthData}
             setHealthData={setHealthData}
+            accent={accent}
+          />
+        ) : isTravel ? (
+          <TravelDetails
+            sectionId={section.id}
+            travelData={travelData}
+            setTravelData={setTravelData}
+            accent={accent}
+          />
+        ) : isWorkouts ? (
+          <WorkoutsDetails
+            sectionId={section.id}
+            workoutsData={workoutsData}
+            setWorkoutsData={setWorkoutsData}
+            accent={accent}
+          />
+        ) : isMeals ? (
+          <MealsDetails
+            sectionId={section.id}
+            mealsData={mealsData}
+            setMealsData={setMealsData}
             accent={accent}
           />
         ) : isWeekly ? (
@@ -3006,6 +3033,498 @@ function SleepBarChart({ series, accent }) {
           );
         })}
       </svg>
+    </div>
+  );
+}
+
+// Shared form-field styles used by Travel / Workouts / Meals.
+const HEALTH_FIELD_STYLES = (() => {
+  const baseField = {
+    background: 'rgba(255,255,255,0.06)',
+    border: '0.5px solid rgba(255,255,255,0.12)',
+    color: '#FA8072',
+    borderRadius: 8,
+    padding: '8px 10px',
+    outline: 'none',
+    fontFamily: 'Geist, ui-sans-serif, system-ui',
+    fontSize: 14,
+    boxSizing: 'border-box',
+    minWidth: 0,
+  };
+  return {
+    baseField,
+    moneyField: {
+      ...baseField,
+      fontFamily: 'Geist Mono, ui-monospace, monospace',
+      fontVariantNumeric: 'tabular-nums',
+      textAlign: 'right',
+    },
+    colHeadStyle: {
+      fontFamily: 'Geist Mono, ui-monospace, monospace',
+      fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+      color: 'rgba(250,128,114,0.45)',
+      paddingBottom: 4,
+    },
+    xBtn: {
+      appearance: 'none', border: 0, background: 'transparent',
+      color: 'rgba(250,128,114,0.4)', cursor: 'pointer',
+      padding: 4, fontSize: 16, lineHeight: 1, flexShrink: 0,
+    },
+    addBtn: (accent) => ({
+      appearance: 'none', border: 0, background: 'transparent',
+      color: accent, cursor: 'pointer', padding: '6px 0', marginTop: 4,
+      fontFamily: 'Geist Mono, ui-monospace, monospace',
+      fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+      fontWeight: 600,
+    }),
+  };
+})();
+
+// Travel — list of trips with destination, dates, confirmations, packing.
+function TravelDetails({ sectionId, travelData, setTravelData, accent }) {
+  const FG_WHITE = '#FAFAF7';
+  const { baseField, colHeadStyle, xBtn, addBtn } = HEALTH_FIELD_STYLES;
+
+  const stored = (travelData && travelData[sectionId]);
+  const trips = (stored ? stored.trips : SECTION_LIB.travel.trips) || [];
+
+  const patch = (updater) => {
+    setTravelData((prev) => {
+      const sec = (prev && prev[sectionId]) || { trips: SECTION_LIB.travel.trips || [] };
+      return { ...(prev || {}), [sectionId]: updater(sec) };
+    });
+  };
+  const updateTrip = (id, p) => patch((c) => ({ ...c, trips: c.trips.map((t) => t.id === id ? { ...t, ...p } : t) }));
+  const removeTrip = (id) => patch((c) => ({ ...c, trips: c.trips.filter((t) => t.id !== id) }));
+  const addTrip = () => patch((c) => ({
+    ...c,
+    trips: [...(c.trips || []), { id: Date.now() + Math.random(), destination: '', startDate: '', endDate: '', confirmations: '', notes: '', packing: [] }],
+  }));
+  const updatePack = (tripId, packId, p) => patch((c) => ({
+    ...c,
+    trips: c.trips.map((t) => t.id !== tripId ? t
+      : { ...t, packing: (t.packing || []).map((pk) => pk.id === packId ? { ...pk, ...p } : pk) }),
+  }));
+  const removePack = (tripId, packId) => patch((c) => ({
+    ...c,
+    trips: c.trips.map((t) => t.id !== tripId ? t
+      : { ...t, packing: (t.packing || []).filter((pk) => pk.id !== packId) }),
+  }));
+  const addPack = (tripId, item) => patch((c) => ({
+    ...c,
+    trips: c.trips.map((t) => t.id !== tripId ? t
+      : { ...t, packing: [...(t.packing || []), { id: Date.now() + Math.random(), item, packed: false }] }),
+  }));
+
+  // Sort trips by start date ascending; trips without dates sink.
+  const sortedTrips = trips.slice().sort((a, b) => {
+    if (!a.startDate && !b.startDate) return 0;
+    if (!a.startDate) return 1;
+    if (!b.startDate) return -1;
+    return new Date(a.startDate) - new Date(b.startDate);
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <SectionTitle>Trips · {trips.length}</SectionTitle>
+      {sortedTrips.map((tr) => {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const start = tr.startDate ? new Date(tr.startDate) : null;
+        const end = tr.endDate ? new Date(tr.endDate) : start;
+        if (start) start.setHours(0, 0, 0, 0);
+        if (end) end.setHours(0, 0, 0, 0);
+        let dateHint = null;
+        if (start) {
+          if (today >= start && end && today <= end) {
+            const total = Math.round((end - start) / 86_400_000) + 1;
+            const dayN = Math.round((today - start) / 86_400_000) + 1;
+            dateHint = `Day ${dayN} of ${total}`;
+          } else if (start > today) {
+            const delta = Math.round((start - today) / 86_400_000);
+            dateHint = delta === 0 ? 'Today' : delta === 1 ? 'Tomorrow' : `In ${delta} days`;
+          } else {
+            dateHint = `Past · ${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+          }
+        }
+        const packedDone = (tr.packing || []).filter((p) => p.packed).length;
+        const packedTotal = (tr.packing || []).length;
+        return (
+          <div key={tr.id} style={{
+            background: 'rgba(255,255,255,0.03)',
+            border: '0.5px solid rgba(255,255,255,0.12)',
+            borderRadius: 12, padding: 12,
+            display: 'flex', flexDirection: 'column', gap: 10,
+          }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 28px', gap: 8, alignItems: 'center' }}>
+              <input
+                value={tr.destination} placeholder="Destination"
+                onChange={(e) => updateTrip(tr.id, { destination: e.target.value })}
+                style={baseField}
+              />
+              <button onClick={() => removeTrip(tr.id)} aria-label="Remove trip" style={xBtn}>×</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={colHeadStyle}>Depart</div>
+                <input type="date" value={tr.startDate || ''}
+                  onChange={(e) => updateTrip(tr.id, { startDate: e.target.value })}
+                  style={{ ...baseField, colorScheme: 'dark' }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={colHeadStyle}>Return</div>
+                <input type="date" value={tr.endDate || ''}
+                  onChange={(e) => updateTrip(tr.id, { endDate: e.target.value })}
+                  style={{ ...baseField, colorScheme: 'dark' }}
+                />
+              </div>
+            </div>
+            {dateHint && (
+              <div style={{
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
+                color: 'rgba(250,128,114,0.55)', textAlign: 'right',
+              }}>{dateHint}</div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={colHeadStyle}>Confirmations</div>
+              <input value={tr.confirmations || ''} placeholder="Flight #, hotel res, …"
+                onChange={(e) => updateTrip(tr.id, { confirmations: e.target.value })}
+                style={baseField}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={colHeadStyle}>Notes</div>
+              <textarea value={tr.notes || ''} placeholder="Plans, reminders…"
+                onChange={(e) => updateTrip(tr.id, { notes: e.target.value })}
+                rows={2}
+                style={{ ...baseField, resize: 'vertical', minHeight: 48, fontFamily: 'Geist, ui-sans-serif, system-ui' }}
+              />
+            </div>
+            <div>
+              <div style={{ ...colHeadStyle, display: 'flex', justifyContent: 'space-between' }}>
+                <span>Packing</span>
+                <span style={{ color: 'rgba(250,128,114,0.55)' }}>{packedDone} / {packedTotal}</span>
+              </div>
+              {(tr.packing || []).map((p) => (
+                <div key={p.id} style={{
+                  display: 'grid', gridTemplateColumns: '18px 1fr 24px', gap: 8,
+                  alignItems: 'center', padding: '5px 0',
+                  borderBottom: '0.5px solid rgba(255,255,255,0.06)',
+                }}>
+                  <button
+                    onClick={() => updatePack(tr.id, p.id, { packed: !p.packed })}
+                    aria-label={p.packed ? 'Mark not packed' : 'Mark packed'}
+                    style={{
+                      appearance: 'none', padding: 0, cursor: 'pointer',
+                      width: 18, height: 18, borderRadius: 5,
+                      borderStyle: 'solid', borderWidth: '1.5px',
+                      borderColor: p.packed ? accent : 'rgba(255,255,255,0.3)',
+                      backgroundColor: p.packed ? accent : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    {p.packed && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5 4 7 8 3" stroke="#0B0B0E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                  </button>
+                  <input value={p.item}
+                    onChange={(e) => updatePack(tr.id, p.id, { item: e.target.value })}
+                    style={{
+                      ...baseField, padding: '4px 6px', fontSize: 13,
+                      background: 'transparent', border: 0,
+                      textDecoration: p.packed ? 'line-through' : 'none',
+                      color: p.packed ? 'rgba(250,128,114,0.5)' : '#FA8072',
+                    }}
+                  />
+                  <button onClick={() => removePack(tr.id, p.id)} aria-label="Remove item" style={xBtn}>×</button>
+                </div>
+              ))}
+              <PackingAdder onAdd={(v) => addPack(tr.id, v)} addBtnStyle={addBtn(accent)} baseField={baseField} />
+            </div>
+          </div>
+        );
+      })}
+      <button onClick={addTrip} style={addBtn(accent)}>+ Add trip</button>
+    </div>
+  );
+}
+
+function PackingAdder({ onAdd, addBtnStyle, baseField }) {
+  const [draft, setDraft] = React.useState('');
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); const v = draft.trim(); if (!v) return; onAdd(v); setDraft(''); }}
+      style={{ display: 'grid', gridTemplateColumns: '1fr 56px', gap: 8, marginTop: 6 }}
+    >
+      <input value={draft} placeholder="Add packing item"
+        onChange={(e) => setDraft(e.target.value)}
+        style={{ ...baseField, padding: '6px 8px', fontSize: 13 }}
+      />
+      <button type="submit" style={{ ...addBtnStyle, padding: '4px 0', margin: 0, textAlign: 'right' }}>Add</button>
+    </form>
+  );
+}
+
+// Workouts — chronological list of sessions with date + type + duration.
+function WorkoutsDetails({ sectionId, workoutsData, setWorkoutsData, accent }) {
+  const FG_WHITE = '#FAFAF7';
+  const { baseField, moneyField, colHeadStyle, xBtn, addBtn } = HEALTH_FIELD_STYLES;
+
+  const stored = (workoutsData && workoutsData[sectionId]);
+  const sessions = (stored ? stored.sessions : SECTION_LIB.workouts.sessions) || [];
+
+  const patch = (updater) => {
+    setWorkoutsData((prev) => {
+      const sec = (prev && prev[sectionId]) || { sessions: SECTION_LIB.workouts.sessions || [] };
+      return { ...(prev || {}), [sectionId]: updater(sec) };
+    });
+  };
+  const updateS = (id, p) => patch((c) => ({ ...c, sessions: c.sessions.map((s) => s.id === id ? { ...s, ...p } : s) }));
+  const removeS = (id) => patch((c) => ({ ...c, sessions: c.sessions.filter((s) => s.id !== id) }));
+  const addS = () => patch((c) => ({
+    ...c,
+    sessions: [{ id: Date.now() + Math.random(), date: new Date().toISOString().slice(0, 10), type: '', duration: '', notes: '' }, ...(c.sessions || [])],
+  }));
+
+  // Aggregate totals — useful header summary.
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dow = (today.getDay() + 6) % 7;
+  const weekStart = new Date(today); weekStart.setDate(today.getDate() - dow);
+  let weekCount = 0, weekMinutes = 0, monthCount = 0;
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  sessions.forEach((s) => {
+    if (!s.date) return;
+    const d = new Date(s.date); d.setHours(0, 0, 0, 0);
+    if (d >= weekStart) { weekCount++; weekMinutes += Number(s.duration) || 0; }
+    if (d >= monthStart) monthCount++;
+  });
+  const sorted = sessions.slice().sort((a, b) => {
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return new Date(b.date) - new Date(a.date);
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <SectionTitle>This week</SectionTitle>
+          <span style={{
+            fontFamily: 'Geist Mono, ui-monospace, monospace',
+            fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
+            color: 'rgba(250,128,114,0.55)',
+          }}>
+            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{weekCount}</span>&nbsp;sessions&nbsp;·&nbsp;
+            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{weekMinutes}</span>&nbsp;min
+            &nbsp;·&nbsp;
+            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{monthCount}</span>&nbsp;this&nbsp;mo
+          </span>
+        </div>
+      </div>
+
+      {sorted.map((s) => (
+        <div key={s.id} style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: '0.5px solid rgba(255,255,255,0.12)',
+          borderRadius: 12, padding: 12,
+          display: 'flex', flexDirection: 'column', gap: 10,
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 28px', gap: 8, alignItems: 'center' }}>
+            <input value={s.type} placeholder="Run, Lift, Yoga, …"
+              onChange={(e) => updateS(s.id, { type: e.target.value })}
+              style={baseField}
+            />
+            <button onClick={() => removeS(s.id)} aria-label="Remove session" style={xBtn}>×</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={colHeadStyle}>Date</div>
+              <input type="date" value={s.date || ''}
+                onChange={(e) => updateS(s.id, { date: e.target.value })}
+                style={{ ...baseField, colorScheme: 'dark' }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={colHeadStyle}>Minutes</div>
+              <input type="number" inputMode="numeric" step="1" min="0"
+                value={s.duration ?? ''} placeholder="0"
+                onChange={(e) => updateS(s.id, { duration: e.target.value })}
+                style={moneyField}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={colHeadStyle}>Notes</div>
+            <input value={s.notes || ''} placeholder="Distance, weight, mood…"
+              onChange={(e) => updateS(s.id, { notes: e.target.value })}
+              style={baseField}
+            />
+          </div>
+        </div>
+      ))}
+      <button onClick={addS} style={addBtn(accent)}>+ Log session</button>
+    </div>
+  );
+}
+
+// Meals & Groceries — weekly plan (mon..sun × breakfast/lunch/dinner) and
+// a free-form grocery list. Grocery items toggle done; rendered separately.
+const MEAL_DAYS = [
+  { key: 'mon', label: 'Mon' }, { key: 'tue', label: 'Tue' },
+  { key: 'wed', label: 'Wed' }, { key: 'thu', label: 'Thu' },
+  { key: 'fri', label: 'Fri' }, { key: 'sat', label: 'Sat' },
+  { key: 'sun', label: 'Sun' },
+];
+function MealsDetails({ sectionId, mealsData, setMealsData, accent }) {
+  const FG_WHITE = '#FAFAF7';
+  const { baseField, colHeadStyle, xBtn, addBtn } = HEALTH_FIELD_STYLES;
+
+  const stored = (mealsData && mealsData[sectionId]);
+  const week = (stored ? stored.week : SECTION_LIB.meals.week) || {};
+  const grocery = (stored ? stored.grocery : SECTION_LIB.meals.grocery) || [];
+
+  const todayIdx = (new Date().getDay() + 6) % 7;
+
+  const patch = (updater) => {
+    setMealsData((prev) => {
+      const sec = (prev && prev[sectionId]) || {
+        week: SECTION_LIB.meals.week,
+        grocery: SECTION_LIB.meals.grocery,
+      };
+      return { ...(prev || {}), [sectionId]: updater(sec) };
+    });
+  };
+  const updateMeal = (dayKey, slot, value) => patch((c) => ({
+    ...c,
+    week: { ...(c.week || {}), [dayKey]: { ...((c.week || {})[dayKey] || {}), [slot]: value } },
+  }));
+  const addGrocery = (item, qty) => patch((c) => ({
+    ...c,
+    grocery: [...(c.grocery || []), { id: Date.now() + Math.random(), item, qty: qty || '', got: false }],
+  }));
+  const updateGrocery = (id, p) => patch((c) => ({ ...c, grocery: c.grocery.map((g) => g.id === id ? { ...g, ...p } : g) }));
+  const removeGrocery = (id) => patch((c) => ({ ...c, grocery: c.grocery.filter((g) => g.id !== id) }));
+  const clearGotten = () => patch((c) => ({ ...c, grocery: c.grocery.filter((g) => !g.got) }));
+
+  const [newItem, setNewItem] = React.useState('');
+  const [newQty, setNewQty] = React.useState('');
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <div>
+        <SectionTitle>This week</SectionTitle>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {MEAL_DAYS.map((d, i) => {
+            const dayData = week[d.key] || {};
+            const isToday = i === todayIdx;
+            return (
+              <div key={d.key} style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: `0.5px solid ${isToday ? accent : 'rgba(255,255,255,0.12)'}`,
+                borderRadius: 12, padding: 12,
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <div style={{
+                  fontFamily: 'Geist Mono, ui-monospace, monospace',
+                  fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+                  color: isToday ? accent : 'rgba(250,128,114,0.55)',
+                }}>{d.label}{isToday ? ' · today' : ''}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr', gap: 8, alignItems: 'center' }}>
+                  <div style={colHeadStyle}>Breakfast</div>
+                  <input value={dayData.breakfast || ''} placeholder=""
+                    onChange={(e) => updateMeal(d.key, 'breakfast', e.target.value)}
+                    style={baseField}
+                  />
+                  <div style={colHeadStyle}>Lunch</div>
+                  <input value={dayData.lunch || ''} placeholder=""
+                    onChange={(e) => updateMeal(d.key, 'lunch', e.target.value)}
+                    style={baseField}
+                  />
+                  <div style={colHeadStyle}>Dinner</div>
+                  <input value={dayData.dinner || ''} placeholder=""
+                    onChange={(e) => updateMeal(d.key, 'dinner', e.target.value)}
+                    style={baseField}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <SectionTitle>Grocery</SectionTitle>
+          {grocery.some((g) => g.got) && (
+            <button onClick={clearGotten} style={{
+              appearance: 'none', border: 0, background: 'transparent',
+              color: accent, cursor: 'pointer', padding: 0,
+              fontFamily: 'Geist Mono, ui-monospace, monospace',
+              fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+              fontWeight: 600,
+            }}>Clear checked</button>
+          )}
+        </div>
+        {grocery.map((g) => (
+          <div key={g.id} style={{
+            display: 'grid', gridTemplateColumns: '18px 1fr 80px 24px', gap: 8,
+            alignItems: 'center', padding: '6px 0',
+            borderBottom: '0.5px solid rgba(255,255,255,0.06)',
+          }}>
+            <button
+              onClick={() => updateGrocery(g.id, { got: !g.got })}
+              aria-label={g.got ? 'Mark not bought' : 'Mark bought'}
+              style={{
+                appearance: 'none', padding: 0, cursor: 'pointer',
+                width: 18, height: 18, borderRadius: 5,
+                borderStyle: 'solid', borderWidth: '1.5px',
+                borderColor: g.got ? accent : 'rgba(255,255,255,0.3)',
+                backgroundColor: g.got ? accent : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              {g.got && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5 4 7 8 3" stroke="#0B0B0E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+            </button>
+            <input value={g.item}
+              onChange={(e) => updateGrocery(g.id, { item: e.target.value })}
+              style={{
+                ...baseField, padding: '4px 6px', fontSize: 14,
+                background: 'transparent', border: 0,
+                textDecoration: g.got ? 'line-through' : 'none',
+                color: g.got ? 'rgba(250,128,114,0.5)' : '#FA8072',
+              }}
+            />
+            <input value={g.qty || ''} placeholder="qty"
+              onChange={(e) => updateGrocery(g.id, { qty: e.target.value })}
+              style={{
+                ...baseField, padding: '4px 6px', fontSize: 12,
+                background: 'transparent', border: 0,
+                color: 'rgba(250,128,114,0.7)', textAlign: 'right',
+              }}
+            />
+            <button onClick={() => removeGrocery(g.id)} aria-label="Remove" style={xBtn}>×</button>
+          </div>
+        ))}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const v = newItem.trim(); if (!v) return;
+            addGrocery(v, newQty.trim());
+            setNewItem(''); setNewQty('');
+          }}
+          style={{ display: 'grid', gridTemplateColumns: '1fr 80px 56px', gap: 8, marginTop: 6 }}
+        >
+          <input value={newItem} placeholder="Add item"
+            onChange={(e) => setNewItem(e.target.value)}
+            style={{ ...baseField, padding: '6px 8px', fontSize: 13 }}
+          />
+          <input value={newQty} placeholder="qty"
+            onChange={(e) => setNewQty(e.target.value)}
+            style={{ ...baseField, padding: '6px 8px', fontSize: 13 }}
+          />
+          <button type="submit" style={{ ...addBtn(accent), padding: '4px 0', margin: 0, textAlign: 'right' }}>Add</button>
+        </form>
+      </div>
     </div>
   );
 }

@@ -267,6 +267,13 @@ function App() {
   // drives the wheel brief and the last-7-day chart in the detail view.
   const [healthData, setHealthData] = usePersistedState('swiped.health', () => ({}));
 
+  // Per-section data for travel / workouts / meals. All three are seeded
+  // from SECTION_LIB the first time a section of that type is added (see
+  // the seedSectionData helper below) so users see a working example.
+  const [travelData, setTravelData] = usePersistedState('swiped.travel', () => ({}));
+  const [workoutsData, setWorkoutsData] = usePersistedState('swiped.workouts', () => ({}));
+  const [mealsData, setMealsData] = usePersistedState('swiped.meals', () => ({}));
+
   // Mutate the currently-selected section (used by PersonDetails so people
   // can rename + change avatar inline without going to Settings).
   const updateSelectedSection = (patch) => {
@@ -363,6 +370,9 @@ function App() {
     setHomeData({ phones: [], emails: [], socials: [], birthday: '', notes: '' });
     setBudgetData({ accounts: [], income: [], bills: [], subscriptions: [], notes: '' });
     setHealthData({});
+    setTravelData({});
+    setWorkoutsData({});
+    setMealsData({});
   };
 
   // Sheet gesture state. `finger` is the live (or last) pointer position;
@@ -715,6 +725,129 @@ function App() {
         ],
       };
     }
+    if (contentKey === 'travel') {
+      const sectionId = selected?.id || 'travel';
+      const stored = travelData[sectionId];
+      const trips = (stored ? stored.trips : SECTION_LIB.travel.trips) || [];
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const yearStart = new Date(today.getFullYear(), 0, 1);
+      const yearEnd = new Date(today.getFullYear() + 1, 0, 1);
+      // Categorize: current trip (today inside [start, end]) or next upcoming.
+      let current = null;
+      let next = null;
+      let nextDelta = Infinity;
+      let tripsThisYear = 0;
+      let daysThisYear = 0;
+      trips.forEach((tr) => {
+        const start = tr.startDate ? new Date(tr.startDate) : null;
+        const end = tr.endDate ? new Date(tr.endDate) : start;
+        if (!start) return;
+        start.setHours(0, 0, 0, 0); end.setHours(0, 0, 0, 0);
+        if (start >= yearStart && start < yearEnd) {
+          tripsThisYear++;
+          daysThisYear += Math.max(1, Math.round((end - start) / 86_400_000) + 1);
+        }
+        if (today >= start && today <= end) current = { trip: tr, start, end };
+        else if (start > today) {
+          const delta = Math.round((start - today) / 86_400_000);
+          if (delta < nextDelta) { nextDelta = delta; next = { trip: tr, start, end, delta }; }
+        }
+      });
+      let brief = 'No trips planned';
+      let nextLabel = '—';
+      if (current) {
+        const total = Math.round((current.end - current.start) / 86_400_000) + 1;
+        const dayN = Math.round((today - current.start) / 86_400_000) + 1;
+        brief = `In ${current.trip.destination || '—'} · Day ${dayN} of ${total}`;
+        nextLabel = 'Now';
+      } else if (next) {
+        brief = next.delta === 0 ? `${next.trip.destination} today`
+          : next.delta === 1 ? `${next.trip.destination} tomorrow`
+          : `${next.trip.destination} in ${next.delta} days`;
+        nextLabel = next.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+      return {
+        ...baseContent,
+        brief,
+        stats: [
+          { label: 'Next', value: nextLabel },
+          { label: `Trips ${String(today.getFullYear()).slice(-2)}`, value: String(tripsThisYear) },
+          { label: 'Days', value: String(daysThisYear) },
+        ],
+      };
+    }
+    if (contentKey === 'workouts') {
+      const sectionId = selected?.id || 'workouts';
+      const stored = workoutsData[sectionId];
+      const sessions = (stored ? stored.sessions : SECTION_LIB.workouts.sessions) || [];
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      // Monday-anchored week start.
+      const dow = (today.getDay() + 6) % 7; // 0 = Monday
+      const weekStart = new Date(today); weekStart.setDate(today.getDate() - dow);
+      const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 7);
+      let weekCount = 0;
+      let weekMinutes = 0;
+      const dateSet = new Set();
+      sessions.forEach((s) => {
+        if (!s.date) return;
+        const d = new Date(s.date); d.setHours(0, 0, 0, 0);
+        dateSet.add(d.toISOString().slice(0, 10));
+        if (d >= weekStart && d < weekEnd) {
+          weekCount++;
+          weekMinutes += Number(s.duration) || 0;
+        }
+      });
+      // Streak — consecutive days back from today with at least one session.
+      let streak = 0;
+      const cursor = new Date(today);
+      while (dateSet.has(cursor.toISOString().slice(0, 10))) {
+        streak++;
+        cursor.setDate(cursor.getDate() - 1);
+      }
+      const hours = Math.floor(weekMinutes / 60);
+      const mins = weekMinutes % 60;
+      const durStr = weekMinutes === 0 ? '0m'
+        : hours === 0 ? `${mins}m`
+        : `${hours}h ${mins}m`;
+      return {
+        ...baseContent,
+        brief: weekCount === 0
+          ? 'No workouts yet this week'
+          : `${weekCount} session${weekCount === 1 ? '' : 's'} · ${durStr}`,
+        stats: [
+          { label: 'This wk', value: String(weekCount) },
+          { label: 'Minutes', value: String(weekMinutes) },
+          { label: 'Streak', value: streak === 0 ? '—' : `${streak}d` },
+        ],
+      };
+    }
+    if (contentKey === 'meals') {
+      const sectionId = selected?.id || 'meals';
+      const stored = mealsData[sectionId];
+      const week = (stored ? stored.week : SECTION_LIB.meals.week) || {};
+      const grocery = (stored ? stored.grocery : SECTION_LIB.meals.grocery) || [];
+      const dayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+      const todayIdx = (new Date().getDay() + 6) % 7; // 0=Mon
+      const todayKey = dayKeys[todayIdx];
+      const todayDinner = (week[todayKey] && week[todayKey].dinner) || '';
+      const planned = dayKeys.reduce((s, k) => s + ((week[k] && week[k].dinner) ? 1 : 0), 0);
+      const eatingOut = dayKeys.reduce((s, k) => {
+        const d = (week[k] && week[k].dinner) || '';
+        return s + (/\bout\b|takeout|restaurant|delivery/i.test(d) ? 1 : 0);
+      }, 0);
+      const groceryLeft = grocery.filter((g) => !g.got).length;
+      return {
+        ...baseContent,
+        brief: todayDinner
+          ? `Tonight: ${todayDinner}`
+          : (planned > 0 ? 'Nothing planned tonight' : 'Plan some meals'),
+        stats: [
+          { label: 'Planned', value: `${planned} / 7` },
+          { label: 'Grocery', value: groceryLeft > 0 ? `${groceryLeft} left` : '—' },
+          { label: 'Eating out', value: String(eatingOut) },
+        ],
+      };
+    }
     if (contentKey === 'person') {
       const pd = peopleData[selected?.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '', reminders: [] };
       // Age (years) computed from birthday year — only stat shown for people.
@@ -740,7 +873,7 @@ function App() {
       };
     }
     return baseContent;
-  }, [contentKey, baseContent, schoolSemesters, peopleData, selected, t.userName, t.accent, sections.length, budgetData, weeklyData, weeklyActiveKey, icsEvents, healthData]);
+  }, [contentKey, baseContent, schoolSemesters, peopleData, selected, t.userName, t.accent, sections.length, budgetData, weeklyData, weeklyActiveKey, icsEvents, healthData, travelData, workoutsData, mealsData]);
 
   // For the wheel's icon lookup, ensure each section has a valid iconKey
   const wheelSections = sections.map((s) => ({
@@ -954,6 +1087,12 @@ function App() {
               setBudgetData={setBudgetData}
               healthData={healthData}
               setHealthData={setHealthData}
+              travelData={travelData}
+              setTravelData={setTravelData}
+              workoutsData={workoutsData}
+              setWorkoutsData={setWorkoutsData}
+              mealsData={mealsData}
+              setMealsData={setMealsData}
               icsEvents={icsEvents}
               icsLinks={t.icsLinks || {}}
               scale={stageScale}
@@ -1202,7 +1341,7 @@ function SwipeHint({ visible, protrusion, tf, scale = 1 }) {
 }
 
 function SectionEditor({ sections, onChange }) {
-  const AVAILABLE = ['work', 'budget', 'school', 'goals', 'notes', 'health', 'habits', 'tasks', 'reading'];
+  const AVAILABLE = ['work', 'budget', 'school', 'goals', 'notes', 'health', 'habits', 'tasks', 'reading', 'travel', 'workouts', 'meals'];
   const used = new Set(sections.map((s) => s.contentKey || s.id));
   const remove = (i) => onChange(sections.filter((_, idx) => idx !== i));
   const rename = (i, name) => onChange(sections.map((s, idx) => (idx === i ? { ...s, name } : s)));
