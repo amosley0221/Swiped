@@ -2627,6 +2627,10 @@ function HealthDetails({ sectionId, healthData, setHealthData, accent }) {
   const FG_PINK = '#FA8072';
   const FG_WHITE = '#FAFAF7';
   const todayKey = new Date().toISOString().slice(0, 10);
+  // Selected day — defaults to today but the user can pick any past date to
+  // backfill a missed entry. Charts always show the 7-day window ending today
+  // so a backfill immediately surfaces in the trend.
+  const [selectedKey, setSelectedKey] = React.useState(todayKey);
 
   const days = React.useMemo(() => {
     const out = [];
@@ -2639,20 +2643,29 @@ function HealthDetails({ sectionId, healthData, setHealthData, accent }) {
   }, [todayKey]);
 
   const entries = (healthData && healthData[sectionId]) || {};
-  const todayEntry = entries[todayKey] || {};
+  const activeEntry = entries[selectedKey] || {};
 
-  const updateToday = (patch) => {
+  const updateActive = (patch) => {
     setHealthData((prev) => {
       const sec = { ...((prev && prev[sectionId]) || {}) };
-      sec[todayKey] = { ...(sec[todayKey] || {}), ...patch };
+      sec[selectedKey] = { ...(sec[selectedKey] || {}), ...patch };
       return { ...(prev || {}), [sectionId]: sec };
     });
   };
 
-  const stepsValue = todayEntry.steps != null ? String(todayEntry.steps) : '';
-  const sleepMin = Number(todayEntry.sleepMinutes) || 0;
+  const stepsValue = activeEntry.steps != null ? String(activeEntry.steps) : '';
+  const sleepMin = Number(activeEntry.sleepMinutes) || 0;
   const sleepHours = sleepMin > 0 ? Math.floor(sleepMin / 60) : '';
   const sleepMinutesPart = sleepMin > 0 ? sleepMin % 60 : '';
+
+  const isToday = selectedKey === todayKey;
+  const selectedDate = (() => {
+    const [y, m, d] = selectedKey.split('-').map(Number);
+    return new Date(y, (m || 1) - 1, d || 1);
+  })();
+  const cardTitle = isToday
+    ? 'Today'
+    : selectedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
   const stepsSeries = days.map((d) => {
     const key = d.toISOString().slice(0, 10);
@@ -2693,7 +2706,26 @@ function HealthDetails({ sectionId, healthData, setHealthData, accent }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
       <div>
-        <SectionTitle>Today</SectionTitle>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+          marginBottom: 8,
+        }}>
+          <SectionTitle>{cardTitle}</SectionTitle>
+          {!isToday && (
+            <button
+              onClick={() => setSelectedKey(todayKey)}
+              style={{
+                appearance: 'none', border: 0, background: 'transparent',
+                color: accent, cursor: 'pointer', padding: 0,
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+                fontWeight: 600,
+              }}
+            >
+              Jump to today
+            </button>
+          )}
+        </div>
         <div style={{
           background: 'rgba(255,255,255,0.03)',
           border: '0.5px solid rgba(255,255,255,0.12)',
@@ -2701,11 +2733,21 @@ function HealthDetails({ sectionId, healthData, setHealthData, accent }) {
           display: 'flex', flexDirection: 'column', gap: 10,
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={colHeadStyle}>Date</div>
+            <input
+              type="date"
+              value={selectedKey}
+              max={todayKey}
+              onChange={(e) => { if (e.target.value) setSelectedKey(e.target.value); }}
+              style={{ ...baseField, colorScheme: 'dark' }}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={colHeadStyle}>Steps</div>
             <input
               type="number" inputMode="numeric" step="1" min="0"
               value={stepsValue} placeholder="0"
-              onChange={(e) => updateToday({ steps: e.target.value })}
+              onChange={(e) => updateActive({ steps: e.target.value })}
               style={moneyField}
             />
           </div>
@@ -2718,7 +2760,7 @@ function HealthDetails({ sectionId, healthData, setHealthData, accent }) {
                 onChange={(e) => {
                   const h = Math.max(0, Number(e.target.value) || 0);
                   const m = Number(sleepMinutesPart) || 0;
-                  updateToday({ sleepMinutes: h * 60 + m });
+                  updateActive({ sleepMinutes: h * 60 + m });
                 }}
                 style={moneyField}
               />
@@ -2728,7 +2770,7 @@ function HealthDetails({ sectionId, healthData, setHealthData, accent }) {
                 onChange={(e) => {
                   const m = Math.max(0, Math.min(59, Number(e.target.value) || 0));
                   const h = Number(sleepHours) || 0;
-                  updateToday({ sleepMinutes: h * 60 + m });
+                  updateActive({ sleepMinutes: h * 60 + m });
                 }}
                 style={moneyField}
               />
