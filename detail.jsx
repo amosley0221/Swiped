@@ -2019,7 +2019,7 @@ function BudgetDetails({ data, setData, accent }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <SectionTitle>Accounts · {safe.accounts.length}</SectionTitle>
           <span style={sumStyle}>
-            Total&nbsp;<span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalBalance)}</span>
+            Total&nbsp;<span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(cashTotal)}</span>
           </span>
         </div>
         {cashAccounts.length > 0 && (
