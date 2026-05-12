@@ -45,26 +45,49 @@
   ];
   const CACHE_PREFIX = 'swiped.ics.cache.';
   const CACHE_TTL_MS = 15 * 60 * 1000;
+  // Bump when the cache shape or validation rules change so stale entries
+  // from a previous deploy don't keep serving bad data.
+  const CACHE_VERSION = 2;
+  // Minimum plausible size of a real iCalendar response. Outlook's empty-
+  // calendar VCALENDAR wrapper alone is ~250 bytes; anything well below
+  // that is almost certainly a stub from a misbehaving proxy.
+  const MIN_ICS_BYTES = 200;
+
+  // One-shot: wipe any cache entries that were written before CACHE_VERSION
+  // existed (they'd lack a v field).
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(CACHE_PREFIX)) continue;
+      try {
+        const v = JSON.parse(localStorage.getItem(k) || 'null');
+        if (!v || v.v !== CACHE_VERSION) localStorage.removeItem(k);
+      } catch (e) { localStorage.removeItem(k); }
+    }
+  } catch (e) { /* localStorage may be locked — fine */ }
 
   async function fetchICS(url) {
     if (!url) throw new Error('No ICS URL');
     const errors = [];
-    for (const make of CORS_PROXIES) {
-      const target = make(url);
+    for (let i = 0; i < CORS_PROXIES.length; i++) {
+      const target = CORS_PROXIES[i](url);
       if (!target) continue;
+      const label = ['direct', 'corsproxy.io', 'allorigins', 'codetabs', 'thingproxy', 'corsproxy.org', 'custom'][i] || `#${i}`;
       try {
         const res = await fetch(target);
-        if (!res.ok) { errors.push(`HTTP ${res.status}`); continue; }
+        if (!res.ok) { errors.push(`${label}:HTTP ${res.status}`); continue; }
         const text = await res.text();
-        // Some proxies hand back HTML error pages with a 200 — sanity-check
-        // that we got actual iCalendar content before declaring success.
         if (!/BEGIN:VCALENDAR/i.test(text)) {
-          errors.push('non-ICS response');
+          errors.push(`${label}:non-ICS`);
           continue;
         }
-        return text;
+        if (text.length < MIN_ICS_BYTES) {
+          errors.push(`${label}:stub ${text.length}B`);
+          continue;
+        }
+        return { text, sourceProxy: label };
       } catch (err) {
-        errors.push((err && err.message) || String(err));
+        errors.push(`${label}:${(err && err.message) || String(err)}`);
       }
     }
     throw new Error(`Calendar provider blocked the proxy (${errors.join(' · ')}). Make sure the URL is the .ics feed link from "Publish a calendar" → ICS.`);
@@ -245,18 +268,28 @@
       try { localStorage.removeItem(cacheKey); } catch (e) { /* ignore */ }
     }
     let text = null;
+    let sourceProxy = null;
     if (!force) {
       try {
         const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-        if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
+        if (cached
+            && cached.v === CACHE_VERSION
+            && cached.text
+            && cached.text.length >= MIN_ICS_BYTES
+            && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
           text = cached.text;
+          sourceProxy = cached.sourceProxy || 'cache';
         }
       } catch (e) { /* ignore */ }
     }
     if (!text) {
-      text = await fetchICS(url);
+      const result = await fetchICS(url);
+      text = result.text;
+      sourceProxy = result.sourceProxy;
       try {
-        localStorage.setItem(cacheKey, JSON.stringify({ text, fetchedAt: Date.now() }));
+        localStorage.setItem(cacheKey, JSON.stringify({
+          v: CACHE_VERSION, text, sourceProxy, fetchedAt: Date.now(),
+        }));
       } catch (e) { /* storage may be full — fine, we just refetch */ }
     }
     const allEvents = parseICS(text);
@@ -270,6 +303,7 @@
       totalParsed: allEvents.length,
       bytes: text.length,
       rawVeventMatches,
+      sourceProxy,
     };
   }
 

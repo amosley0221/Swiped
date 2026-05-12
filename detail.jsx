@@ -369,6 +369,7 @@ function DetailView({
             icsTotalParsed={(icsEvents && icsEvents[section.id] && icsEvents[section.id].totalParsed) || 0}
             icsBytes={(icsEvents && icsEvents[section.id] && icsEvents[section.id].bytes) || 0}
             icsRawVeventMatches={(icsEvents && icsEvents[section.id] && icsEvents[section.id].rawVeventMatches) || 0}
+            icsSourceProxy={(icsEvents && icsEvents[section.id] && icsEvents[section.id].sourceProxy) || null}
             icsConfigured={!!(icsLinks && icsLinks[section.id])}
             onIcsRefresh={onIcsRefresh}
           />
@@ -1057,6 +1058,7 @@ function WeeklyView({
   icsTotalParsed = 0,
   icsBytes = 0,
   icsRawVeventMatches = 0,
+  icsSourceProxy = null,
   icsConfigured = false,
   onIcsRefresh,
 }) {
@@ -1245,11 +1247,16 @@ function WeeklyView({
               padding: '6px 0 10px',
               lineHeight: 1.5,
             }}>
-              {icsTotalParsed === 0 && icsRawVeventMatches === 0
-                ? `Calendar loaded · 0 events in feed · ${icsBytes} bytes (proxy may be returning a stub — try Refresh, or in Outlook tap Reset links and republish)`
-                : icsTotalParsed === 0 && icsRawVeventMatches > 0
-                ? `Parser missed ${icsRawVeventMatches} VEVENT entries (${icsBytes} bytes) — bug, send the ICS link to debug`
-                : `Calendar loaded · ${icsTotalParsed} event${icsTotalParsed === 1 ? '' : 's'} in feed, none this week`}
+              {(() => {
+                const via = icsSourceProxy ? ` via ${icsSourceProxy}` : '';
+                if (icsTotalParsed === 0 && icsRawVeventMatches === 0) {
+                  return `Calendar loaded${via} · ${icsBytes} bytes · 0 events (try Refresh, or republish in Outlook)`;
+                }
+                if (icsTotalParsed === 0 && icsRawVeventMatches > 0) {
+                  return `Parser missed ${icsRawVeventMatches} VEVENT entries (${icsBytes} bytes${via}) — bug, send the ICS link to debug`;
+                }
+                return `Calendar loaded${via} · ${icsTotalParsed} event${icsTotalParsed === 1 ? '' : 's'} in feed, none this week`;
+              })()}
             </div>
           )}
           {icsError && (

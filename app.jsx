@@ -326,14 +326,15 @@ function App() {
     window.SwipedICS.getEvents(activeIcsUrl, rangeStart, rangeEnd, { force })
       .then((result) => {
         if (cancelled) return;
-        // result is { events, totalParsed, bytes, rawVeventMatches }.
+        // result is { events, totalParsed, bytes, rawVeventMatches, sourceProxy }.
         const events = Array.isArray(result) ? result : (result.events || []);
         const totalParsed = Array.isArray(result) ? events.length : (result.totalParsed || 0);
         const bytes = Array.isArray(result) ? 0 : (result.bytes || 0);
         const rawVeventMatches = Array.isArray(result) ? 0 : (result.rawVeventMatches || 0);
+        const sourceProxy = Array.isArray(result) ? null : (result.sourceProxy || null);
         setIcsEvents((prev) => ({
           ...prev,
-          [activeSectionId]: { events, totalParsed, bytes, rawVeventMatches, fetchedAt: Date.now(), error: null },
+          [activeSectionId]: { events, totalParsed, bytes, rawVeventMatches, sourceProxy, fetchedAt: Date.now(), error: null },
         }));
       })
       .catch((err) => {
