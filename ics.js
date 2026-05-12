@@ -19,16 +19,38 @@
 (function () {
   if (typeof window === 'undefined') return;
 
-  const CORS_PROXY = 'https://corsproxy.io/?';
+  // CORS proxies tried in order — Outlook and Google calendar URLs don't
+  // send CORS headers, so the PWA can't fetch them directly. Free proxies
+  // periodically rate-limit or 403 individual hosts; falling back through
+  // a chain keeps the calendar working when one provider hiccups.
+  const CORS_PROXIES = [
+    (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
+    (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+    (u) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
+  ];
   const CACHE_PREFIX = 'swiped.ics.cache.';
   const CACHE_TTL_MS = 15 * 60 * 1000;
 
   async function fetchICS(url) {
     if (!url) throw new Error('No ICS URL');
-    const target = CORS_PROXY + encodeURIComponent(url);
-    const res = await fetch(target);
-    if (!res.ok) throw new Error(`ICS fetch failed: HTTP ${res.status}`);
-    return res.text();
+    const errors = [];
+    for (const make of CORS_PROXIES) {
+      try {
+        const res = await fetch(make(url));
+        if (!res.ok) { errors.push(`HTTP ${res.status}`); continue; }
+        const text = await res.text();
+        // Some proxies hand back HTML error pages with a 200 — sanity-check
+        // that we got actual iCalendar content before declaring success.
+        if (!/BEGIN:VCALENDAR/i.test(text)) {
+          errors.push('non-ICS response');
+          continue;
+        }
+        return text;
+      } catch (err) {
+        errors.push((err && err.message) || String(err));
+      }
+    }
+    throw new Error(`Calendar provider blocked the proxy (${errors.join(' · ')}). Make sure the URL is the .ics feed link from "Publish a calendar" → ICS.`);
   }
 
   // RFC 5545 line folding: lines starting with whitespace continue the
