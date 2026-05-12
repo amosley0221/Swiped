@@ -38,7 +38,8 @@ services:
         name: Cache-Control
         value: no-cache, no-store, must-revalidate
       # ICS import (Outlook calendar feed parsing) — same reasoning.
-      - path: /ics.js
+      # File was renamed ics.js → ics-v2.js to bust iOS PWA cache.
+      - path: /ics-v2.js
         name: Cache-Control
         value: no-cache, no-store, must-revalidate
     routes:
