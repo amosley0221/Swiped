@@ -147,6 +147,9 @@ function App() {
   // First-load index: jump to whichever section is the user's "home" (added
   // to the wheel as a centered default). Falls back to index 0 if the user
   // has removed home from their layout.
+  // Quick-jump picker overlay — opened from the grid icon next to the
+  // section dots when there are 7+ sections (small dots become fiddly).
+  const [pickerOpen, setPickerOpen] = React.useState(false);
   const [targetIdx, setTargetIdx] = React.useState(() => {
     const i = sections.findIndex((s) => (s.contentKey || s.id) === 'home');
     return i >= 0 ? i : 0;
@@ -1006,6 +1009,8 @@ function App() {
         accent={t.accent}
         bottom={protrusion + 28 * stageScale}
         scale={stageScale}
+        onJump={(i) => setTargetIdx(i)}
+        onOpenPicker={() => setPickerOpen(true)}
       />
       {/* small upward arrow chip floating above wheel — touch handle hint */}
 
@@ -1099,6 +1104,17 @@ function App() {
             />
           </div>
         </div>
+      )}
+
+      {/* Quick-jump section picker — only mounted when open */}
+      {pickerOpen && (
+        <SectionPicker
+          sections={wheelSections}
+          activeIdx={Math.round(idx)}
+          accent={t.accent}
+          onPick={(i) => { setTargetIdx(i); setPickerOpen(false); }}
+          onClose={() => setPickerOpen(false)}
+        />
       )}
 
       {/* Tweaks panel */}
@@ -1290,26 +1306,158 @@ function BriefPanel({ section, content, accent, tf, pulseKey, scale = 1 }) {
   );
 }
 
-function SectionDots({ sections, index, accent, bottom, scale = 1 }) {
+function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpenPicker }) {
+  // Wraps each dot in a transparent button so the tap target is much
+  // bigger than the rendered dot — important for users with many
+  // sections where individual dots are only ~4px wide.
   return (
     <div style={{
       position: 'absolute', left: 0, right: 0, bottom,
-      display: 'flex', justifyContent: 'center', gap: 6 * scale,
-      zIndex: 3, pointerEvents: 'none',
+      display: 'flex', justifyContent: 'center', alignItems: 'center',
+      gap: 2 * scale, zIndex: 3,
     }}>
       {sections.map((s, i) => {
         const dist = Math.abs(i - index);
         const isSelected = dist < 0.5;
         return (
-          <div key={s.id} style={{
-            width: (isSelected ? 16 : 4) * scale,
-            height: 4 * scale,
-            borderRadius: 2 * scale,
-            background: isSelected ? accent : 'rgba(11,11,14,0.18)',
-            transition: 'width 0.25s ease, background 0.25s ease',
-          }} />
+          <button
+            key={s.id}
+            onClick={() => onJump && onJump(i)}
+            aria-label={`Jump to ${s.name}`}
+            style={{
+              appearance: 'none', border: 0, background: 'transparent',
+              padding: `${10 * scale}px ${3 * scale}px`,
+              cursor: 'pointer', lineHeight: 0,
+            }}
+          >
+            <div style={{
+              width: (isSelected ? 16 : 4) * scale,
+              height: 4 * scale,
+              borderRadius: 2 * scale,
+              background: isSelected ? accent : 'rgba(11,11,14,0.18)',
+              transition: 'width 0.25s ease, background 0.25s ease',
+            }} />
+          </button>
         );
       })}
+      {/* Grid icon — only when the wheel has enough sections that tapping
+          individual dots gets fiddly. Opens an overlay picker. */}
+      {sections.length >= 7 && (
+        <button
+          onClick={onOpenPicker}
+          aria-label="All sections"
+          style={{
+            appearance: 'none', border: 0, background: 'transparent',
+            padding: `${8 * scale}px ${6 * scale}px`,
+            marginLeft: 4 * scale, cursor: 'pointer',
+            color: 'rgba(11,11,14,0.55)', lineHeight: 0,
+          }}
+        >
+          <svg width={14 * scale} height={14 * scale} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="2" width="5" height="5" rx="1" />
+            <rect x="9" y="2" width="5" height="5" rx="1" />
+            <rect x="2" y="9" width="5" height="5" rx="1" />
+            <rect x="9" y="9" width="5" height="5" rx="1" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Section picker overlay — surfaced from the grid button next to the
+// section dots when a user has 7+ sections in the wheel. Renders all
+// sections in a 3-column grid (icon + name); tapping one jumps the wheel
+// straight there instead of dragging through every position.
+function SectionPicker({ sections, activeIdx, accent, onPick, onClose }) {
+  // Trap-clicks: the backdrop closes; the card stops propagation so
+  // taps inside don't accidentally dismiss.
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60,
+        background: 'rgba(11,11,14,0.55)',
+        backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 360,
+          background: '#15151A',
+          border: '0.5px solid rgba(255,255,255,0.1)',
+          borderRadius: 18, padding: 18,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+        }}
+      >
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+          marginBottom: 14,
+        }}>
+          <div style={{
+            fontFamily: 'Geist Mono, ui-monospace, monospace',
+            fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
+            color: 'rgba(250,128,114,0.55)',
+          }}>Jump to section</div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              appearance: 'none', border: 0, background: 'transparent',
+              color: 'rgba(250,128,114,0.4)', cursor: 'pointer',
+              padding: 0, fontSize: 18, lineHeight: 1,
+            }}
+          >×</button>
+        </div>
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8,
+        }}>
+          {sections.map((s, i) => {
+            const isActive = i === activeIdx;
+            return (
+              <button
+                key={s.id}
+                onClick={() => onPick(i)}
+                style={{
+                  appearance: 'none', cursor: 'pointer',
+                  background: isActive ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
+                  border: `0.5px solid ${isActive ? accent : 'rgba(255,255,255,0.12)'}`,
+                  borderRadius: 12, padding: '12px 8px',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                  color: '#FA8072', minWidth: 0,
+                }}
+              >
+                <div style={{
+                  width: 26, height: 26,
+                  color: isActive ? accent : 'rgba(250,250,247,0.85)',
+                  borderRadius: (s.contentKey || s.id) === 'person' ? '50%' : 0,
+                  overflow: 'hidden',
+                }}>
+                  {s.iconData
+                    ? <img src={s.iconData} alt="" style={{
+                        width: 26, height: 26,
+                        objectFit: (s.contentKey || s.id) === 'person' ? 'cover' : 'contain',
+                      }} />
+                    : (Icon[s.iconKey] || Icon.target)}
+                </div>
+                <div style={{
+                  fontFamily: 'Geist, ui-sans-serif, system-ui',
+                  fontSize: 12, fontWeight: 500,
+                  color: isActive ? accent : '#FA8072',
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  width: '100%',
+                }}>
+                  {(s.contentKey || s.id) === 'person' ? (s.name || 'Person') : s.name}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
