@@ -616,14 +616,14 @@ function App() {
         zIndex: 4,
       }}>
         <div style={{
-          fontFamily: tf.mono, fontSize: 10.5 * stageScale, letterSpacing: '0.22em',
+          fontFamily: tf.mono, fontSize: 13 * stageScale, letterSpacing: '0.22em',
           textTransform: 'uppercase', color: 'rgba(11,11,14,0.45)',
         }}>
           Swiped
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 * stageScale }}>
           <div style={{
-            fontFamily: tf.mono, fontSize: 10.5 * stageScale, letterSpacing: '0.14em',
+            fontFamily: tf.mono, fontSize: 13 * stageScale, letterSpacing: '0.14em',
             color: 'rgba(11,11,14,0.45)', fontVariantNumeric: 'tabular-nums',
             whiteSpace: 'nowrap',
           }}>
@@ -760,6 +760,7 @@ function App() {
               setHomeData={setHomeData}
               budgetData={budgetData}
               setBudgetData={setBudgetData}
+              scale={stageScale}
             />
           </div>
         </div>

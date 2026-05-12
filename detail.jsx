@@ -15,7 +15,13 @@ function DetailView({
   sections, updateSection,
   homeData, setHomeData,
   budgetData, setBudgetData,
+  scale = 1,
 }) {
+  // Scale a handful of the most-visible chrome elements in the detail view
+  // (top-bar section label, headline, section titles) so the sheet reads
+  // comfortably on the Fold cover screen alongside the already-scaled
+  // brief panel. Component-internal type stays at its phone baseline.
+  const s = scale;
   const isSchool = (section.contentKey || section.id) === 'school';
   const isWork = (section.contentKey || section.id) === 'work';
   const isPerson = (section.contentKey || section.id) === 'person';
@@ -174,7 +180,7 @@ function DetailView({
       }}>
         <div style={{
           fontFamily: 'Geist Mono, ui-monospace, monospace',
-          fontSize: 10.5, letterSpacing: '0.18em', textTransform: 'uppercase',
+          fontSize: 13 * s, letterSpacing: '0.18em', textTransform: 'uppercase',
           color: 'rgba(250,128,114,0.5)',
         }}>
           {isPerson ? 'Person' : isHome ? 'Home' : isBudget ? 'Budget' : section.name}
@@ -182,21 +188,21 @@ function DetailView({
       </div>
 
       {/* Headline */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: 22 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 * s, marginBottom: 22 * s }}>
         <div style={{
-          width: 32, height: 32, color: FG_WHITE,
+          width: 32 * s, height: 32 * s, color: FG_WHITE,
           borderRadius: isPerson ? '50%' : 0, overflow: 'hidden',
         }}>
           {section.iconData
             ? <img src={section.iconData} alt="" style={{
-                width: 32, height: 32,
+                width: 32 * s, height: 32 * s,
                 objectFit: isPerson ? 'cover' : 'contain',
               }} />
             : (Icon[section.iconKey] || Icon.target)}
         </div>
         <div style={{
           fontFamily: '"Instrument Serif", Georgia, serif',
-          fontSize: 42, lineHeight: '0.95', fontWeight: 400, fontStyle: 'italic',
+          fontSize: 42 * s, lineHeight: '0.95', fontWeight: 400, fontStyle: 'italic',
           letterSpacing: '-0.02em',
         }}>
           {content.headline}
@@ -457,7 +463,7 @@ function SectionTitle({ children }) {
   return (
     <div style={{
       fontFamily: 'Geist Mono, ui-monospace, monospace',
-      fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+      fontSize: 13, letterSpacing: '0.16em', textTransform: 'uppercase',
       color: 'rgba(250,128,114,0.45)',
       marginBottom: 10, marginTop: 2,
     }}>

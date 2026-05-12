@@ -195,7 +195,7 @@ function Wheel({
               style={{
                 fontFamily: '"Instrument Serif", Georgia, serif',
                 fontStyle: 'italic',
-                fontSize: (isSelected ? 20 : 16) * scale,
+                fontSize: (isSelected ? 24 : 19) * scale,
                 fontWeight: 400,
                 letterSpacing: '-0.01em',
                 whiteSpace: 'nowrap',
