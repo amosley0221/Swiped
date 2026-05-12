@@ -2081,6 +2081,14 @@ function BudgetDetails({ data, setData, accent }) {
               const utilColor = util >= 0.7 ? '#E8704A'
                 : util >= 0.3 ? '#E8C547'
                 : accent;
+              // Auto-advance the stored due date month-by-month so the
+              // displayed "next due" is always in the future. We don't write
+              // the rolled value back here — that happens on blur (below) so
+              // the patch doesn't fire on every render.
+              const nextDue = nextRenewal({ renewalDate: c.dueDate, frequency: 'monthly' });
+              const today = new Date(); today.setHours(0, 0, 0, 0);
+              const daysAway = nextDue ? Math.round((nextDue - today) / 86_400_000) : null;
+              const overdue = daysAway != null && daysAway < 0;
               return (
                 <div key={c.id} style={{
                   background: 'rgba(255,255,255,0.03)',
@@ -2116,6 +2124,54 @@ function BudgetDetails({ data, setData, accent }) {
                       />
                     </div>
                   </div>
+                  {/* Payment due — separate from limit/available so users
+                      can track the statement balance owed each month. The
+                      due date auto-advances monthly; the amount stays put
+                      across rollover so the prior balance carries until the
+                      user updates it. */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr', gap: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={colHeadStyle}>Amount due</div>
+                      <input
+                        type="number" inputMode="decimal" step="0.01"
+                        value={c.amountDue ?? ''} placeholder="0.00"
+                        onChange={(e) => updateRow('accounts', c.id, { amountDue: e.target.value })}
+                        style={moneyField}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={colHeadStyle}>Due</div>
+                      <input
+                        type="date"
+                        value={c.dueDate || ''}
+                        onChange={(e) => updateRow('accounts', c.id, { dueDate: e.target.value })}
+                        onBlur={(e) => {
+                          if (!e.target.value) return;
+                          const rolled = nextRenewalISO({ renewalDate: e.target.value, frequency: 'monthly' });
+                          if (rolled && rolled !== e.target.value) {
+                            updateRow('accounts', c.id, { dueDate: rolled });
+                          }
+                        }}
+                        style={{ ...baseField, colorScheme: 'dark' }}
+                      />
+                    </div>
+                  </div>
+                  {nextDue && (
+                    <div style={{
+                      fontFamily: 'Geist Mono, ui-monospace, monospace',
+                      fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
+                      color: overdue ? '#E8704A'
+                        : daysAway != null && daysAway <= 7 ? '#E8C547'
+                        : 'rgba(250,128,114,0.45)',
+                      textAlign: 'right',
+                    }}>
+                      {overdue ? `Overdue · was ${nextDue.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                        : daysAway === 0 ? 'Due today'
+                        : daysAway === 1 ? 'Due tomorrow'
+                        : daysAway != null && daysAway <= 30 ? `Due in ${daysAway} days`
+                        : `Due ${nextDue.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                    </div>
+                  )}
                   {limit > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       <div style={{

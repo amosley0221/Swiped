@@ -542,7 +542,17 @@ function App() {
         if (d >= today && d <= sevenOut) return s + (Number(sub.amount) || 0);
         return s;
       }, 0);
-      const due7d = billsDue7d + subsDue7d;
+      // Credit card payments — auto-advancing monthly date + Amount due
+      // entered per card. Included in Due ≤7d alongside bills and subs so
+      // the wheel brief reflects the full upcoming outflow.
+      const creditDue7d = (bd.accounts || []).reduce((s, a) => {
+        if (a.kind !== 'credit') return s;
+        const d = nextRenewal({ renewalDate: a.dueDate, frequency: 'monthly' });
+        if (!d) return s;
+        if (d >= today && d <= sevenOut) return s + (Number(a.amountDue) || 0);
+        return s;
+      }, 0);
+      const due7d = billsDue7d + subsDue7d + creditDue7d;
       const fmt = (n) => n === 0 ? '$0'
         : n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: n < 1000 ? 2 : 0 });
       const accountCount = (bd.accounts || []).length;
