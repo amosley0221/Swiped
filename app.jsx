@@ -1307,39 +1307,68 @@ function BriefPanel({ section, content, accent, tf, pulseKey, scale = 1 }) {
 }
 
 function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpenPicker }) {
-  // Wraps each dot in a transparent button so the tap target is much
-  // bigger than the rendered dot — important for users with many
-  // sections where individual dots are only ~4px wide.
+  // Strip occupies a tall hit area so finger placement is forgiving, and
+  // its zIndex sits above the wheel (z=5) so pointer events reach us
+  // instead of getting intercepted by the dial's drag handler.
+  const stripRef = React.useRef(null);
+  const dragging = React.useRef(false);
+  const lastIdx = React.useRef(-1);
+
+  const idxAt = (clientX) => {
+    const el = stripRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+    const ratio = rect.width > 0 ? x / rect.width : 0;
+    return Math.max(0, Math.min(sections.length - 1, Math.round(ratio * (sections.length - 1))));
+  };
+
+  const onPointerDown = (e) => {
+    dragging.current = true;
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+    const i = idxAt(e.clientX);
+    if (i != null && i !== lastIdx.current) { lastIdx.current = i; onJump && onJump(i); }
+  };
+  const onPointerMove = (e) => {
+    if (!dragging.current) return;
+    const i = idxAt(e.clientX);
+    if (i != null && i !== lastIdx.current) { lastIdx.current = i; onJump && onJump(i); }
+  };
+  const stopDrag = () => { dragging.current = false; lastIdx.current = -1; };
+
   return (
     <div style={{
       position: 'absolute', left: 0, right: 0, bottom,
       display: 'flex', justifyContent: 'center', alignItems: 'center',
-      gap: 2 * scale, zIndex: 3,
+      gap: 6 * scale, zIndex: 10,
     }}>
-      {sections.map((s, i) => {
-        const dist = Math.abs(i - index);
-        const isSelected = dist < 0.5;
-        return (
-          <button
-            key={s.id}
-            onClick={() => onJump && onJump(i)}
-            aria-label={`Jump to ${s.name}`}
-            style={{
-              appearance: 'none', border: 0, background: 'transparent',
-              padding: `${10 * scale}px ${3 * scale}px`,
-              cursor: 'pointer', lineHeight: 0,
-            }}
-          >
-            <div style={{
+      <div
+        ref={stripRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={stopDrag}
+        onPointerCancel={stopDrag}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6 * scale,
+          padding: `${12 * scale}px ${10 * scale}px`,
+          touchAction: 'none', cursor: 'pointer',
+        }}
+      >
+        {sections.map((s, i) => {
+          const dist = Math.abs(i - index);
+          const isSelected = dist < 0.5;
+          return (
+            <div key={s.id} style={{
               width: (isSelected ? 16 : 4) * scale,
               height: 4 * scale,
               borderRadius: 2 * scale,
               background: isSelected ? accent : 'rgba(11,11,14,0.18)',
               transition: 'width 0.25s ease, background 0.25s ease',
+              pointerEvents: 'none',
             }} />
-          </button>
-        );
-      })}
+          );
+        })}
+      </div>
       {/* Grid icon — only when the wheel has enough sections that tapping
           individual dots gets fiddly. Opens an overlay picker. */}
       {sections.length >= 7 && (
@@ -1348,9 +1377,8 @@ function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpe
           aria-label="All sections"
           style={{
             appearance: 'none', border: 0, background: 'transparent',
-            padding: `${8 * scale}px ${6 * scale}px`,
-            marginLeft: 4 * scale, cursor: 'pointer',
-            color: 'rgba(11,11,14,0.55)', lineHeight: 0,
+            padding: `${10 * scale}px ${8 * scale}px`,
+            cursor: 'pointer', color: 'rgba(11,11,14,0.55)', lineHeight: 0,
           }}
         >
           <svg width={14 * scale} height={14 * scale} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
