@@ -2644,6 +2644,10 @@ function HealthDetails({ sectionId, healthData, setHealthData, accent }) {
 
   const entries = (healthData && healthData[sectionId]) || {};
   const activeEntry = entries[selectedKey] || {};
+  // Custom metrics list lives at __metrics so it doesn't collide with the
+  // ISO-date keys used for daily entries. Values for a given metric go into
+  // each day's entry under entry.custom[metricId].
+  const customMetrics = entries.__metrics || [];
 
   const updateActive = (patch) => {
     setHealthData((prev) => {
@@ -2652,6 +2656,38 @@ function HealthDetails({ sectionId, healthData, setHealthData, accent }) {
       return { ...(prev || {}), [sectionId]: sec };
     });
   };
+
+  const updateActiveCustom = (metricId, value) => {
+    setHealthData((prev) => {
+      const sec = { ...((prev && prev[sectionId]) || {}) };
+      const day = { ...(sec[selectedKey] || {}) };
+      day.custom = { ...(day.custom || {}), [metricId]: value };
+      sec[selectedKey] = day;
+      return { ...(prev || {}), [sectionId]: sec };
+    });
+  };
+
+  const addCustomMetric = (name, unit) => {
+    const cleanName = (name || '').trim();
+    if (!cleanName) return;
+    const metric = { id: Date.now() + Math.random(), name: cleanName, unit: (unit || '').trim() };
+    setHealthData((prev) => {
+      const sec = { ...((prev && prev[sectionId]) || {}) };
+      sec.__metrics = [...(sec.__metrics || []), metric];
+      return { ...(prev || {}), [sectionId]: sec };
+    });
+  };
+
+  const removeCustomMetric = (metricId) => {
+    setHealthData((prev) => {
+      const sec = { ...((prev && prev[sectionId]) || {}) };
+      sec.__metrics = (sec.__metrics || []).filter((m) => m.id !== metricId);
+      return { ...(prev || {}), [sectionId]: sec };
+    });
+  };
+
+  const [newMetricName, setNewMetricName] = React.useState('');
+  const [newMetricUnit, setNewMetricUnit] = React.useState('');
 
   const stepsValue = activeEntry.steps != null ? String(activeEntry.steps) : '';
   const sleepMin = Number(activeEntry.sleepMinutes) || 0;
@@ -2775,6 +2811,77 @@ function HealthDetails({ sectionId, healthData, setHealthData, accent }) {
                 style={moneyField}
               />
             </div>
+          </div>
+
+          {/* Custom metrics — water intake, weight, miles run, calories,
+              anything else the user wants to track. Each row stores its
+              value for the currently-selected date; the metric definition
+              itself is section-level. */}
+          {customMetrics.map((m) => {
+            const cur = (activeEntry.custom && activeEntry.custom[m.id]);
+            return (
+              <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                }}>
+                  <div style={colHeadStyle}>
+                    {m.name}{m.unit ? ` · ${m.unit}` : ''}
+                  </div>
+                  <button
+                    onClick={() => removeCustomMetric(m.id)}
+                    aria-label={`Remove ${m.name}`}
+                    style={{
+                      appearance: 'none', border: 0, background: 'transparent',
+                      color: 'rgba(250,128,114,0.4)', cursor: 'pointer',
+                      padding: 0, fontSize: 14, lineHeight: 1,
+                    }}
+                  >×</button>
+                </div>
+                <input
+                  type="number" inputMode="decimal" step="0.01"
+                  value={cur != null ? String(cur) : ''}
+                  placeholder="0"
+                  onChange={(e) => updateActiveCustom(m.id, e.target.value)}
+                  style={moneyField}
+                />
+              </div>
+            );
+          })}
+
+          {/* Add-metric inline form. Name is required; unit is optional
+              (e.g. "Water" with no unit, "Weight" + "lb", "Run" + "mi"). */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 80px 56px', gap: 8,
+            paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.08)',
+          }}>
+            <input
+              value={newMetricName}
+              onChange={(e) => setNewMetricName(e.target.value)}
+              placeholder="Add metric (e.g. Water)"
+              style={baseField}
+            />
+            <input
+              value={newMetricUnit}
+              onChange={(e) => setNewMetricUnit(e.target.value)}
+              placeholder="unit"
+              style={baseField}
+            />
+            <button
+              onClick={() => {
+                if (!newMetricName.trim()) return;
+                addCustomMetric(newMetricName, newMetricUnit);
+                setNewMetricName('');
+                setNewMetricUnit('');
+              }}
+              style={{
+                appearance: 'none', border: 0,
+                background: accent, color: '#0B0B0E',
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
+                borderRadius: 8, fontWeight: 600, cursor: 'pointer',
+                padding: '6px 10px',
+              }}
+            >Add</button>
           </div>
         </div>
       </div>
