@@ -517,13 +517,23 @@ function App() {
       const monthlyIncome = (bd.income || []).reduce((s, i) => s + monthlyNetIncome(i), 0);
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const sevenOut = new Date(today); sevenOut.setDate(today.getDate() + 7);
-      const due7d = (bd.bills || []).reduce((s, b) => {
+      const billsDue7d = (bd.bills || []).reduce((s, b) => {
         if (!b.dueDate) return s;
         const d = new Date(b.dueDate);
         if (isNaN(+d)) return s;
         if (d >= today && d <= sevenOut) return s + (Number(b.amount) || 0);
         return s;
       }, 0);
+      // Subscription renewals coming up in the next 7 days. nextRenewal()
+      // rolls a stored past date forward by the frequency, so old entries
+      // that haven't been refreshed still report the correct upcoming charge.
+      const subsDue7d = (bd.subscriptions || []).reduce((s, sub) => {
+        const d = nextRenewal(sub);
+        if (!d) return s;
+        if (d >= today && d <= sevenOut) return s + (Number(sub.amount) || 0);
+        return s;
+      }, 0);
+      const due7d = billsDue7d + subsDue7d;
       const fmt = (n) => n === 0 ? '$0'
         : n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: n < 1000 ? 2 : 0 });
       const accountCount = (bd.accounts || []).length;

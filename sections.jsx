@@ -503,10 +503,43 @@ function monthlyNetIncome(item) {
   return gross * (1 - rate / 100);
 }
 
+// Given a subscription with a `renewalDate` (YYYY-MM-DD) and `frequency`
+// ('monthly' | 'yearly'), return the next upcoming Date — rolling the
+// stored date forward in increments of the frequency until it's ≥ today.
+// Returns null when the input is missing or malformed.
+function nextRenewal(sub) {
+  if (!sub || !sub.renewalDate) return null;
+  const parts = sub.renewalDate.split('-').map((n) => parseInt(n, 10));
+  const [y, mo, d] = parts;
+  if (!y || !mo || !d) return null;
+  const date = new Date(y, mo - 1, d);
+  if (isNaN(+date)) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let safety = 0;
+  while (date < today && safety++ < 1200) {
+    if (sub.frequency === 'yearly') {
+      date.setFullYear(date.getFullYear() + 1);
+    } else {
+      date.setMonth(date.getMonth() + 1);
+    }
+  }
+  return date;
+}
+
+function nextRenewalISO(sub) {
+  const d = nextRenewal(sub);
+  if (!d) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
 Object.assign(window, {
   Icon, SECTION_LIB, ICON_KEYS,
   GRADE_POINTS, GRADE_OPTIONS, calcGPA, calcOverallGPA, calcProgressiveGPA,
   startOfWeek, weekKey, parseWeekKey, semesterDefaultWeek,
   DEFAULT_INCOME_TAX_RATE, INCOME_FREQUENCIES,
   monthlyGrossIncome, monthlyNetIncome,
+  nextRenewal, nextRenewalISO,
 });

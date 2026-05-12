@@ -2257,46 +2257,98 @@ function BudgetDetails({ data, setData, accent }) {
             <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(subsYearly)}</span>&nbsp;/ yr
           </span>
         </div>
-        {(safe.subscriptions || []).length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 110px 28px', gap: 8 }}>
-            <div style={colHeadStyle}>Service</div>
-            <div style={{ ...colHeadStyle, textAlign: 'right' }}>Amount</div>
-            <div style={colHeadStyle}>Frequency</div>
-            <div />
-          </div>
-        )}
-        {(safe.subscriptions || []).map((sub) => (
-          <div key={sub.id} style={{
-            display: 'grid', gridTemplateColumns: '1fr 110px 110px 28px',
-            gap: 8, marginBottom: 8, alignItems: 'center',
-          }}>
-            <input
-              value={sub.name} placeholder="Netflix, Spotify, …"
-              onChange={(e) => updateRow('subscriptions', sub.id, { name: e.target.value })}
-              style={baseField}
-            />
-            <input
-              type="number" inputMode="decimal" step="0.01"
-              value={sub.amount ?? ''} placeholder="0.00"
-              onChange={(e) => updateRow('subscriptions', sub.id, { amount: e.target.value })}
-              style={moneyField}
-            />
-            <select
-              value={sub.frequency || 'monthly'}
-              onChange={(e) => updateRow('subscriptions', sub.id, { frequency: e.target.value })}
-              style={{
-                ...baseField, appearance: 'none', WebkitAppearance: 'none',
-                fontFamily: 'Geist, ui-sans-serif, system-ui',
-              }}
-            >
-              <option value="monthly" style={{ background: '#15151A' }}>Monthly</option>
-              <option value="yearly" style={{ background: '#15151A' }}>Yearly</option>
-            </select>
-            <button onClick={() => removeRow('subscriptions', sub.id)} aria-label="Remove" style={xBtn}>×</button>
-          </div>
-        ))}
+        {(safe.subscriptions || []).map((sub) => {
+          const next = nextRenewal(sub);
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const daysAway = next ? Math.round((next - today) / 86_400_000) : null;
+          return (
+            <div key={sub.id} style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '0.5px solid rgba(255,255,255,0.12)',
+              borderRadius: 12, padding: 12, marginBottom: 10,
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 28px', gap: 8, alignItems: 'center' }}>
+                <input
+                  value={sub.name} placeholder="Netflix, Spotify, …"
+                  onChange={(e) => updateRow('subscriptions', sub.id, { name: e.target.value })}
+                  style={baseField}
+                />
+                <button onClick={() => removeRow('subscriptions', sub.id)} aria-label="Remove" style={xBtn}>×</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={colHeadStyle}>Amount</div>
+                  <input
+                    type="number" inputMode="decimal" step="0.01"
+                    value={sub.amount ?? ''} placeholder="0.00"
+                    onChange={(e) => updateRow('subscriptions', sub.id, { amount: e.target.value })}
+                    style={moneyField}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={colHeadStyle}>Frequency</div>
+                  <select
+                    value={sub.frequency || 'monthly'}
+                    onChange={(e) => {
+                      const freq = e.target.value;
+                      // Re-roll the renewal date forward for the new frequency
+                      // so the displayed "next" stays in the future.
+                      const merged = { ...sub, frequency: freq };
+                      const rolled = nextRenewalISO(merged);
+                      const patch = { frequency: freq };
+                      if (rolled) patch.renewalDate = rolled;
+                      updateRow('subscriptions', sub.id, patch);
+                    }}
+                    style={{
+                      ...baseField, appearance: 'none', WebkitAppearance: 'none',
+                      fontFamily: 'Geist, ui-sans-serif, system-ui',
+                    }}
+                  >
+                    <option value="monthly" style={{ background: '#15151A' }}>Monthly</option>
+                    <option value="yearly" style={{ background: '#15151A' }}>Yearly</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={colHeadStyle}>Next renewal</div>
+                  <input
+                    type="date"
+                    value={sub.renewalDate || ''}
+                    onChange={(e) => updateRow('subscriptions', sub.id, { renewalDate: e.target.value })}
+                    onBlur={(e) => {
+                      // After the picker closes, advance any past date forward
+                      // to its next upcoming occurrence given the frequency,
+                      // so the row always shows when you'll next be charged.
+                      if (!e.target.value) return;
+                      const rolled = nextRenewalISO({ renewalDate: e.target.value, frequency: sub.frequency });
+                      if (rolled && rolled !== e.target.value) {
+                        updateRow('subscriptions', sub.id, { renewalDate: rolled });
+                      }
+                    }}
+                    style={{ ...baseField, colorScheme: 'dark' }}
+                  />
+                </div>
+              </div>
+              {next && (
+                <div style={{
+                  fontFamily: 'Geist Mono, ui-monospace, monospace',
+                  fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
+                  color: daysAway != null && daysAway <= 7
+                    ? '#E8C547'
+                    : 'rgba(250,128,114,0.45)',
+                  textAlign: 'right',
+                }}>
+                  {daysAway === 0 ? 'Renews today'
+                    : daysAway === 1 ? 'Renews tomorrow'
+                    : daysAway != null && daysAway <= 30 ? `Renews in ${daysAway} days`
+                    : `Renews ${next.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                </div>
+              )}
+            </div>
+          );
+        })}
         <button
-          onClick={() => addRow('subscriptions', { name: '', amount: '', frequency: 'monthly' })}
+          onClick={() => addRow('subscriptions', { name: '', amount: '', frequency: 'monthly', renewalDate: '' })}
           style={addBtn}
         >
           + Add subscription
