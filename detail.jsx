@@ -2111,7 +2111,7 @@ function BudgetDetails({ data, setData, accent }) {
                         type="number" inputMode="decimal" step="0.01"
                         value={c.limit ?? ''} placeholder="0.00"
                         onChange={(e) => updateRow('accounts', c.id, { limit: e.target.value })}
-                        style={{ ...moneyField, width: '100%', maxWidth: 130, alignSelf: 'flex-end', padding: '8px 14px' }}
+                        style={{ ...moneyField, width: '100%', maxWidth: 130, alignSelf: 'flex-start', padding: '8px 14px' }}
                       />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -2120,7 +2120,7 @@ function BudgetDetails({ data, setData, accent }) {
                         type="number" inputMode="decimal" step="0.01"
                         value={c.available ?? ''} placeholder="0.00"
                         onChange={(e) => updateRow('accounts', c.id, { available: e.target.value })}
-                        style={{ ...moneyField, width: '100%', maxWidth: 130, alignSelf: 'flex-end', padding: '8px 14px' }}
+                        style={{ ...moneyField, width: '100%', maxWidth: 130, alignSelf: 'flex-start', padding: '8px 14px' }}
                       />
                     </div>
                   </div>
