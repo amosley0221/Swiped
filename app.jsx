@@ -547,6 +547,38 @@ function App() {
         semesters: schoolSemesters,
       };
     }
+    if (contentKey === 'work') {
+      // Live stats — replaces the seeded "3h 12m / 4-of-6 blocks / 4h 02m
+      // avg" numbers with counts derived from the active week's tasks and
+      // the imported ICS feed.
+      const workId = selected?.id || 'work';
+      const wk = (weeklyActiveKey && weeklyActiveKey[workId]) || weekKey(new Date());
+      const weekStore = (weeklyData[workId] && weeklyData[workId][wk]) || { tasks: [] };
+      const openTasks = (weekStore.tasks || []).filter((t2) => !t2.done).length;
+      const events = icsEvents[workId]?.events || [];
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+      const eventsToday = events.filter((e) => {
+        const d = new Date(e.start);
+        return d >= today && d < tomorrow;
+      }).length;
+      const totalToday = eventsToday + openTasks;
+      return {
+        ...baseContent,
+        brief: totalToday === 0
+          ? 'No meetings today'
+          : eventsToday > 0 && openTasks > 0
+          ? `${eventsToday} meeting${eventsToday === 1 ? '' : 's'} · ${openTasks} task${openTasks === 1 ? '' : 's'}`
+          : eventsToday > 0
+          ? `${eventsToday} meeting${eventsToday === 1 ? '' : 's'} today`
+          : `${openTasks} task${openTasks === 1 ? '' : 's'} this week`,
+        stats: [
+          { label: 'Today', value: String(eventsToday) },
+          { label: 'Tasks', value: String(openTasks) },
+          { label: 'Week', value: String(events.length) },
+        ],
+      };
+    }
     if (contentKey === 'budget') {
       const bd = budgetData || { accounts: [], income: [], bills: [] };
       // Total balance = cash account balances + available credit on credit

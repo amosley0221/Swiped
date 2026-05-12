@@ -1240,23 +1240,50 @@ function WeeklyView({
               Calendar fetch failed: {icsError}
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
-            {/* Read-only Outlook / ICS events first, sorted chronologically.
-                They count toward "open" but can't be checked off or deleted
-                here — that lives in the source calendar. */}
-            {events && events.map((e) => (
-              <EventRow key={e.uid} event={e} />
-            ))}
-            {tasks.length === 0 && (!events || events.length === 0) && (
-              <div style={{
-                color: 'rgba(250,128,114,0.4)', fontSize: 13,
-                padding: '12px 0',
-              }}>No tasks for this week. Add one above.</div>
-            )}
-            {tasks.map((t) => (
-              <TaskRow key={t.id} task={t} accent={accent} onToggle={onToggle} onRemove={onRemove} />
-            ))}
-          </div>
+          {(() => {
+            // Split events into "today" and "rest of week" so the user sees
+            // what's actually happening now without scrolling past every
+            // other day. Today is highlighted with an accent-colored header.
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+            const eventsToday = (events || []).filter((e) => {
+              const d = new Date(e.start);
+              return d >= today && d < tomorrow;
+            });
+            const eventsRest = (events || []).filter((e) => !eventsToday.includes(e));
+            return (
+              <>
+                {eventsToday.length > 0 && (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{
+                      fontFamily: 'Geist Mono, ui-monospace, monospace',
+                      fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
+                      color: accent, marginBottom: 8,
+                    }}>
+                      Today · {eventsToday.length} meeting{eventsToday.length === 1 ? '' : 's'}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      {eventsToday.map((e) => <EventRow key={e.uid} event={e} />)}
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
+                  {/* Rest of the week's events (read-only, sorted
+                      chronologically). They live in the source calendar. */}
+                  {eventsRest.map((e) => <EventRow key={e.uid} event={e} />)}
+                  {tasks.length === 0 && (!events || events.length === 0) && (
+                    <div style={{
+                      color: 'rgba(250,128,114,0.4)', fontSize: 13,
+                      padding: '12px 0',
+                    }}>No tasks for this week. Add one above.</div>
+                  )}
+                  {tasks.map((t) => (
+                    <TaskRow key={t.id} task={t} accent={accent} onToggle={onToggle} onRemove={onRemove} />
+                  ))}
+                </div>
+              </>
+            );
+          })()}
 
           <SectionTitle>Recent</SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
