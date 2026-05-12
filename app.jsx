@@ -510,7 +510,13 @@ function App() {
     }
     if (contentKey === 'budget') {
       const bd = budgetData || { accounts: [], income: [], bills: [] };
-      const totalBalance = (bd.accounts || []).reduce((s, a) => s + (Number(a.balance) || 0), 0);
+      // Total balance = cash account balances + available credit on credit
+      // cards (kind: 'credit'). Available credit is spendable, so the wheel
+      // brief surfaces the full liquid + credit headroom.
+      const totalBalance = (bd.accounts || []).reduce((s, a) => {
+        if (a.kind === 'credit') return s + (Number(a.available) || 0);
+        return s + (Number(a.balance) || 0);
+      }, 0);
       // Income totals are post-tax monthly: each entry's gross is normalized
       // to a per-month figure based on its pay type + frequency, then the
       // average tax rate (default 22%) is subtracted.

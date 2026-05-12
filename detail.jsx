@@ -1864,15 +1864,17 @@ function BudgetDetails({ data, setData, accent }) {
     });
   };
 
-  // Accounts split by kind. Credit cards aren't liquid funds, so they're
-  // listed separately and excluded from Total balance. We surface their
-  // available-credit aggregate so the header still tells the full story.
+  // Accounts split by kind. Credit cards aren't liquid funds in the
+  // traditional sense, but their available credit is spendable — so we
+  // roll it into Total balance alongside cash. Used credit + utilization
+  // are still surfaced per-card below.
   const cashAccounts = safe.accounts.filter((a) => (a.kind || 'cash') !== 'credit');
   const creditAccounts = safe.accounts.filter((a) => a.kind === 'credit');
-  const totalBalance = cashAccounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
+  const cashTotal = cashAccounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
   const totalCreditLimit = creditAccounts.reduce((s, a) => s + (Number(a.limit) || 0), 0);
   const totalCreditAvail = creditAccounts.reduce((s, a) => s + (Number(a.available) || 0), 0);
   const totalCreditUsed = Math.max(0, totalCreditLimit - totalCreditAvail);
+  const totalBalance = cashTotal + totalCreditAvail;
   const monthlyIncomeNet = safe.income.reduce((s, i) => s + monthlyNetIncome(i), 0);
   const yearlyIncomeNet = monthlyIncomeNet * 12;
   // Bills now carry a frequency (default 'monthly'). 'one-time' entries
