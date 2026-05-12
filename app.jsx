@@ -259,7 +259,7 @@ function App() {
   // bills. Entirely user-entered; brief panel + detail stats are derived
   // from this object (no hardcoded numbers anymore).
   const [budgetData, setBudgetData] = usePersistedState('swiped.budget', () => ({
-    accounts: [], income: [], bills: [], notes: '',
+    accounts: [], income: [], bills: [], subscriptions: [], notes: '',
   }));
 
   // Mutate the currently-selected section (used by PersonDetails so people
@@ -356,7 +356,7 @@ function App() {
     setWeeklyActiveKey({ school: seedKey });
     setPeopleData({});
     setHomeData({ phones: [], emails: [], socials: [], birthday: '', notes: '' });
-    setBudgetData({ accounts: [], income: [], bills: [], notes: '' });
+    setBudgetData({ accounts: [], income: [], bills: [], subscriptions: [], notes: '' });
   };
 
   // Sheet gesture state. `finger` is the live (or last) pointer position;

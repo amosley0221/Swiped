@@ -1846,10 +1846,10 @@ function HomeDetails({
 // brief panel + stats grid (Balance / Income / Due ≤7d) are derived from
 // this data in app.jsx, so editing here updates the wheel immediately.
 function BudgetDetails({ data, setData, accent }) {
-  const safe = data || { accounts: [], income: [], bills: [], notes: '' };
+  const safe = data || { accounts: [], income: [], bills: [], subscriptions: [], notes: '' };
 
   const patch = React.useCallback((updater) => {
-    setData((prev) => updater(prev || { accounts: [], income: [], bills: [], notes: '' }));
+    setData((prev) => updater(prev || { accounts: [], income: [], bills: [], subscriptions: [], notes: '' }));
   }, [setData]);
 
   const addRow = (key, seed) => patch((c) => ({ ...c, [key]: [...(c[key] || []), { id: Date.now() + Math.random(), ...seed }] }));
@@ -1868,11 +1868,19 @@ function BudgetDetails({ data, setData, accent }) {
   const monthlyIncomeNet = safe.income.reduce((s, i) => s + monthlyNetIncome(i), 0);
   const yearlyIncomeNet = monthlyIncomeNet * 12;
   const billsTotal = safe.bills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
-  // Bills don't carry a frequency field yet, so the yearly projection
-  // assumes the current list represents a monthly recurring set — most
-  // common case (rent / utilities / subs).
+  // Bills don't carry a frequency field; treat the list as monthly recurring
+  // (rent / utilities / etc.) for the yearly projection.
   const yearlyBills = billsTotal * 12;
-  const monthlyNet = monthlyIncomeNet - billsTotal;
+  // Subscriptions normalize Monthly + Yearly entries to a single monthly
+  // figure (yearly ÷ 12), then flow into the Year Overview alongside bills.
+  const subsMonthly = (safe.subscriptions || []).reduce((s, sub) => {
+    const amt = Number(sub.amount) || 0;
+    return s + (sub.frequency === 'yearly' ? amt / 12 : amt);
+  }, 0);
+  const subsYearly = subsMonthly * 12;
+  const monthlyOut = billsTotal + subsMonthly;
+  const yearlyOut = yearlyBills + subsYearly;
+  const monthlyNet = monthlyIncomeNet - monthlyOut;
   const yearlyNet = monthlyNet * 12;
 
   const baseField = {
@@ -1974,6 +1982,7 @@ function BudgetDetails({ data, setData, accent }) {
         <SectionTitle>Year overview</SectionTitle>
         {overviewRow('Income · net', yearlyIncomeNet, monthlyIncomeNet, { color: accent })}
         {overviewRow('Bills', yearlyBills, billsTotal, { divider: true })}
+        {overviewRow('Subscriptions', subsYearly, subsMonthly, { divider: true })}
         {overviewRow('Net', yearlyNet, monthlyNet, {
           divider: true,
           color: monthlyNet >= 0 ? accent : '#FA8072',
@@ -2233,6 +2242,64 @@ function BudgetDetails({ data, setData, accent }) {
         ))}
         <button onClick={() => addRow('bills', { name: '', amount: '', dueDate: '' })} style={addBtn}>
           + Add bill
+        </button>
+      </div>
+
+      {/* Subscriptions — recurring services. Frequency lets you enter
+          monthly amounts at face value or annual plans as Yearly (which
+          we divide by 12 for the monthly + Year Overview totals). */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <SectionTitle>Subscriptions</SectionTitle>
+          <span style={sumStyle}>
+            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(subsMonthly)}</span>&nbsp;/ mo
+            &nbsp;·&nbsp;
+            <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(subsYearly)}</span>&nbsp;/ yr
+          </span>
+        </div>
+        {(safe.subscriptions || []).length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 110px 28px', gap: 8 }}>
+            <div style={colHeadStyle}>Service</div>
+            <div style={{ ...colHeadStyle, textAlign: 'right' }}>Amount</div>
+            <div style={colHeadStyle}>Frequency</div>
+            <div />
+          </div>
+        )}
+        {(safe.subscriptions || []).map((sub) => (
+          <div key={sub.id} style={{
+            display: 'grid', gridTemplateColumns: '1fr 110px 110px 28px',
+            gap: 8, marginBottom: 8, alignItems: 'center',
+          }}>
+            <input
+              value={sub.name} placeholder="Netflix, Spotify, …"
+              onChange={(e) => updateRow('subscriptions', sub.id, { name: e.target.value })}
+              style={baseField}
+            />
+            <input
+              type="number" inputMode="decimal" step="0.01"
+              value={sub.amount ?? ''} placeholder="0.00"
+              onChange={(e) => updateRow('subscriptions', sub.id, { amount: e.target.value })}
+              style={moneyField}
+            />
+            <select
+              value={sub.frequency || 'monthly'}
+              onChange={(e) => updateRow('subscriptions', sub.id, { frequency: e.target.value })}
+              style={{
+                ...baseField, appearance: 'none', WebkitAppearance: 'none',
+                fontFamily: 'Geist, ui-sans-serif, system-ui',
+              }}
+            >
+              <option value="monthly" style={{ background: '#15151A' }}>Monthly</option>
+              <option value="yearly" style={{ background: '#15151A' }}>Yearly</option>
+            </select>
+            <button onClick={() => removeRow('subscriptions', sub.id)} aria-label="Remove" style={xBtn}>×</button>
+          </div>
+        ))}
+        <button
+          onClick={() => addRow('subscriptions', { name: '', amount: '', frequency: 'monthly' })}
+          style={addBtn}
+        >
+          + Add subscription
         </button>
       </div>
 
