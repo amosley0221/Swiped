@@ -262,6 +262,11 @@ function App() {
     accounts: [], income: [], bills: [], subscriptions: [], notes: '',
   }));
 
+  // Per-health-section daily entries: { [sectionId]: { 'YYYY-MM-DD': { steps, sleepMinutes } } }.
+  // Manual until we wrap in Capacitor and pull from HealthKit; today's entry
+  // drives the wheel brief and the last-7-day chart in the detail view.
+  const [healthData, setHealthData] = usePersistedState('swiped.health', () => ({}));
+
   // Mutate the currently-selected section (used by PersonDetails so people
   // can rename + change avatar inline without going to Settings).
   const updateSelectedSection = (patch) => {
@@ -357,6 +362,7 @@ function App() {
     setPeopleData({});
     setHomeData({ phones: [], emails: [], socials: [], birthday: '', notes: '' });
     setBudgetData({ accounts: [], income: [], bills: [], subscriptions: [], notes: '' });
+    setHealthData({});
   };
 
   // Sheet gesture state. `finger` is the live (or last) pointer position;
@@ -687,6 +693,28 @@ function App() {
         extras: homeExtras,
       };
     }
+    if (contentKey === 'health') {
+      // Today's manual entry drives the stats. Sleep stored in minutes;
+      // formatted as "Xh YY" to match the seeded copy.
+      const sectionId = selected?.id || 'health';
+      const dayKey = new Date().toISOString().slice(0, 10);
+      const today = (healthData[sectionId] && healthData[sectionId][dayKey]) || {};
+      const stepsVal = today.steps != null && today.steps !== ''
+        ? Number(today.steps).toLocaleString('en-US') : '—';
+      const sleepMin = Number(today.sleepMinutes) || 0;
+      const sleepStr = sleepMin > 0
+        ? `${Math.floor(sleepMin / 60)}h ${String(sleepMin % 60).padStart(2, '0')}` : '—';
+      return {
+        ...baseContent,
+        brief: stepsVal === '—' && sleepStr === '—'
+          ? 'Tap to log today’s steps and sleep'
+          : `${stepsVal === '—' ? '0' : stepsVal} steps · ${sleepStr === '—' ? 'no sleep logged' : sleepStr + ' sleep'}`,
+        stats: [
+          { label: 'Steps', value: stepsVal },
+          { label: 'Sleep', value: sleepStr },
+        ],
+      };
+    }
     if (contentKey === 'person') {
       const pd = peopleData[selected?.id] || { phones: [], emails: [], socials: [], birthday: '', notes: '', reminders: [] };
       // Age (years) computed from birthday year — only stat shown for people.
@@ -712,7 +740,7 @@ function App() {
       };
     }
     return baseContent;
-  }, [contentKey, baseContent, schoolSemesters, peopleData, selected, t.userName, t.accent, sections.length, budgetData, weeklyData, weeklyActiveKey, icsEvents]);
+  }, [contentKey, baseContent, schoolSemesters, peopleData, selected, t.userName, t.accent, sections.length, budgetData, weeklyData, weeklyActiveKey, icsEvents, healthData]);
 
   // For the wheel's icon lookup, ensure each section has a valid iconKey
   const wheelSections = sections.map((s) => ({
@@ -924,6 +952,8 @@ function App() {
               setHomeData={setHomeData}
               budgetData={budgetData}
               setBudgetData={setBudgetData}
+              healthData={healthData}
+              setHealthData={setHealthData}
               icsEvents={icsEvents}
               icsLinks={t.icsLinks || {}}
               scale={stageScale}

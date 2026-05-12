@@ -15,6 +15,7 @@ function DetailView({
   sections, updateSection,
   homeData, setHomeData,
   budgetData, setBudgetData,
+  healthData, setHealthData,
   icsEvents, icsLinks,
   scale = 1,
 }) {
@@ -28,6 +29,7 @@ function DetailView({
   const isPerson = (section.contentKey || section.id) === 'person';
   const isHome = (section.contentKey || section.id) === 'home';
   const isBudget = (section.contentKey || section.id) === 'budget';
+  const isHealth = (section.contentKey || section.id) === 'health';
   // Both work and school run the weekly view (calendar + per-week
   // tasks/log/note + horizontal swipe between weeks).
   const isWeekly = isSchool || isWork;
@@ -210,8 +212,8 @@ function DetailView({
         </div>
       </div>
 
-      {/* Quick-add — hidden for person, home, and budget sections, which have their own editors */}
-      {!isPerson && !isHome && !isBudget && (
+      {/* Quick-add — hidden for person, home, budget, and health sections, which have their own editors */}
+      {!isPerson && !isHome && !isBudget && !isHealth && (
         <form onSubmit={onSubmit} style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '10px 12px', borderRadius: 14,
@@ -315,6 +317,13 @@ function DetailView({
             section={section}
             peopleData={peopleData}
             setPeopleData={setPeopleData}
+            accent={accent}
+          />
+        ) : isHealth ? (
+          <HealthDetails
+            sectionId={section.id}
+            healthData={healthData}
+            setHealthData={setHealthData}
             accent={accent}
           />
         ) : isWeekly ? (
@@ -2605,6 +2614,249 @@ function BudgetDetails({ data, setData, accent }) {
           onChange={(v) => patch((c) => ({ ...c, notes: v }))}
         />
       </div>
+    </div>
+  );
+}
+
+// Health — manual daily entry for steps + sleep, with last-7-day charts.
+// Sleep stored in minutes for easy delta math; the input lets the user enter
+// hours + minutes separately. Until we ship a native HealthKit bridge this
+// is the source of truth; both the wheel brief and the charts read straight
+// from healthData[sectionId][YYYY-MM-DD].
+function HealthDetails({ sectionId, healthData, setHealthData, accent }) {
+  const FG_PINK = '#FA8072';
+  const FG_WHITE = '#FAFAF7';
+  const todayKey = new Date().toISOString().slice(0, 10);
+
+  const days = React.useMemo(() => {
+    const out = [];
+    const base = new Date(); base.setHours(0, 0, 0, 0);
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(base); d.setDate(base.getDate() - i);
+      out.push(d);
+    }
+    return out;
+  }, [todayKey]);
+
+  const entries = (healthData && healthData[sectionId]) || {};
+  const todayEntry = entries[todayKey] || {};
+
+  const updateToday = (patch) => {
+    setHealthData((prev) => {
+      const sec = { ...((prev && prev[sectionId]) || {}) };
+      sec[todayKey] = { ...(sec[todayKey] || {}), ...patch };
+      return { ...(prev || {}), [sectionId]: sec };
+    });
+  };
+
+  const stepsValue = todayEntry.steps != null ? String(todayEntry.steps) : '';
+  const sleepMin = Number(todayEntry.sleepMinutes) || 0;
+  const sleepHours = sleepMin > 0 ? Math.floor(sleepMin / 60) : '';
+  const sleepMinutesPart = sleepMin > 0 ? sleepMin % 60 : '';
+
+  const stepsSeries = days.map((d) => {
+    const key = d.toISOString().slice(0, 10);
+    const v = entries[key]?.steps;
+    return { date: d, value: v != null && v !== '' ? Number(v) : null };
+  });
+  const sleepSeries = days.map((d) => {
+    const key = d.toISOString().slice(0, 10);
+    const v = entries[key]?.sleepMinutes;
+    return { date: d, value: v != null && v !== '' ? Number(v) : null };
+  });
+
+  const baseField = {
+    background: 'rgba(255,255,255,0.06)',
+    border: '0.5px solid rgba(255,255,255,0.12)',
+    color: FG_PINK,
+    borderRadius: 8,
+    padding: '8px 10px',
+    outline: 'none',
+    fontFamily: 'Geist, ui-sans-serif, system-ui',
+    fontSize: 14,
+    boxSizing: 'border-box',
+    minWidth: 0,
+  };
+  const moneyField = {
+    ...baseField,
+    fontFamily: 'Geist Mono, ui-monospace, monospace',
+    fontVariantNumeric: 'tabular-nums',
+    textAlign: 'right',
+  };
+  const colHeadStyle = {
+    fontFamily: 'Geist Mono, ui-monospace, monospace',
+    fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+    color: 'rgba(250,128,114,0.45)',
+    paddingBottom: 4,
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <div>
+        <SectionTitle>Today</SectionTitle>
+        <div style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: '0.5px solid rgba(255,255,255,0.12)',
+          borderRadius: 12, padding: 12,
+          display: 'flex', flexDirection: 'column', gap: 10,
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={colHeadStyle}>Steps</div>
+            <input
+              type="number" inputMode="numeric" step="1" min="0"
+              value={stepsValue} placeholder="0"
+              onChange={(e) => updateToday({ steps: e.target.value })}
+              style={moneyField}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={colHeadStyle}>Sleep</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <input
+                type="number" inputMode="numeric" step="1" min="0" max="24"
+                value={sleepHours} placeholder="h"
+                onChange={(e) => {
+                  const h = Math.max(0, Number(e.target.value) || 0);
+                  const m = Number(sleepMinutesPart) || 0;
+                  updateToday({ sleepMinutes: h * 60 + m });
+                }}
+                style={moneyField}
+              />
+              <input
+                type="number" inputMode="numeric" step="1" min="0" max="59"
+                value={sleepMinutesPart} placeholder="m"
+                onChange={(e) => {
+                  const m = Math.max(0, Math.min(59, Number(e.target.value) || 0));
+                  const h = Number(sleepHours) || 0;
+                  updateToday({ sleepMinutes: h * 60 + m });
+                }}
+                style={moneyField}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle>Steps · last 7 days</SectionTitle>
+        <StepsLineChart series={stepsSeries} accent={accent} />
+      </div>
+
+      <div>
+        <SectionTitle>Sleep · last 7 days</SectionTitle>
+        <SleepBarChart series={sleepSeries} accent={accent} />
+      </div>
+    </div>
+  );
+}
+
+// SVG line chart for steps. Treats missing days as gaps (no point drawn) so
+// a single logged day doesn't get connected to zeros on either side.
+function StepsLineChart({ series, accent }) {
+  const W = 320, H = 120, PAD_L = 28, PAD_R = 8, PAD_T = 12, PAD_B = 22;
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
+  const values = series.map((s) => s.value).filter((v) => v != null);
+  const maxV = Math.max(1000, ...values);
+  const xFor = (i) => PAD_L + (series.length <= 1 ? innerW / 2 : (innerW * i) / (series.length - 1));
+  const yFor = (v) => PAD_T + innerH - (v / maxV) * innerH;
+  // Build a path that breaks on null values.
+  let d = '';
+  let pen = false;
+  series.forEach((p, i) => {
+    if (p.value == null) { pen = false; return; }
+    const cmd = pen ? 'L' : 'M';
+    d += `${cmd}${xFor(i).toFixed(1)},${yFor(p.value).toFixed(1)} `;
+    pen = true;
+  });
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.03)',
+      border: '0.5px solid rgba(255,255,255,0.12)',
+      borderRadius: 12, padding: 12,
+    }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+        {/* baseline */}
+        <line x1={PAD_L} x2={W - PAD_R} y1={H - PAD_B} y2={H - PAD_B}
+          stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />
+        {/* y-axis ticks: 0 and max */}
+        <text x={PAD_L - 6} y={H - PAD_B + 3} textAnchor="end"
+          fill="rgba(250,128,114,0.45)" fontSize="9"
+          fontFamily="Geist Mono, ui-monospace, monospace">0</text>
+        <text x={PAD_L - 6} y={PAD_T + 4} textAnchor="end"
+          fill="rgba(250,128,114,0.45)" fontSize="9"
+          fontFamily="Geist Mono, ui-monospace, monospace">{maxV.toLocaleString('en-US')}</text>
+        {/* line */}
+        {d && (
+          <path d={d.trim()} fill="none" stroke={accent} strokeWidth="2"
+            strokeLinejoin="round" strokeLinecap="round" />
+        )}
+        {/* points */}
+        {series.map((p, i) => p.value != null && (
+          <circle key={i} cx={xFor(i)} cy={yFor(p.value)} r="3" fill={accent} />
+        ))}
+        {/* x-axis day labels */}
+        {series.map((p, i) => (
+          <text key={i} x={xFor(i)} y={H - 6} textAnchor="middle"
+            fill="rgba(250,128,114,0.55)" fontSize="9"
+            fontFamily="Geist Mono, ui-monospace, monospace">
+            {p.date.toLocaleDateString('en-US', { weekday: 'narrow' })}
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+// Bar chart for sleep. Heights in hours; bar color follows accent. Missing
+// days render as a faint outline at zero so the absence is visible.
+function SleepBarChart({ series, accent }) {
+  const W = 320, H = 130, PAD_L = 28, PAD_R = 8, PAD_T = 12, PAD_B = 22;
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
+  const hours = series.map((s) => (s.value || 0) / 60);
+  const maxV = Math.max(8, Math.ceil(Math.max(...hours, 0)));
+  const slot = innerW / series.length;
+  const barW = Math.max(8, slot * 0.5);
+  const xFor = (i) => PAD_L + slot * i + (slot - barW) / 2;
+  const yFor = (h) => PAD_T + innerH - (h / maxV) * innerH;
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.03)',
+      border: '0.5px solid rgba(255,255,255,0.12)',
+      borderRadius: 12, padding: 12,
+    }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+        <line x1={PAD_L} x2={W - PAD_R} y1={H - PAD_B} y2={H - PAD_B}
+          stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />
+        <text x={PAD_L - 6} y={H - PAD_B + 3} textAnchor="end"
+          fill="rgba(250,128,114,0.45)" fontSize="9"
+          fontFamily="Geist Mono, ui-monospace, monospace">0h</text>
+        <text x={PAD_L - 6} y={PAD_T + 4} textAnchor="end"
+          fill="rgba(250,128,114,0.45)" fontSize="9"
+          fontFamily="Geist Mono, ui-monospace, monospace">{maxV}h</text>
+        {series.map((p, i) => {
+          const h = (p.value || 0) / 60;
+          const y = yFor(h);
+          const height = (H - PAD_B) - y;
+          return (
+            <g key={i}>
+              {p.value == null ? (
+                <rect x={xFor(i)} y={H - PAD_B - 2} width={barW} height={2}
+                  fill="rgba(255,255,255,0.12)" rx="1" />
+              ) : (
+                <rect x={xFor(i)} y={y} width={barW} height={Math.max(2, height)}
+                  fill={accent} rx="2" />
+              )}
+              <text x={xFor(i) + barW / 2} y={H - 6} textAnchor="middle"
+                fill="rgba(250,128,114,0.55)" fontSize="9"
+                fontFamily="Geist Mono, ui-monospace, monospace">
+                {p.date.toLocaleDateString('en-US', { weekday: 'narrow' })}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }
