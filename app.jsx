@@ -326,12 +326,14 @@ function App() {
     window.SwipedICS.getEvents(activeIcsUrl, rangeStart, rangeEnd, { force })
       .then((result) => {
         if (cancelled) return;
-        // result is { events, totalParsed }; old shape was a bare array.
+        // result is { events, totalParsed, bytes, rawVeventMatches }.
         const events = Array.isArray(result) ? result : (result.events || []);
         const totalParsed = Array.isArray(result) ? events.length : (result.totalParsed || 0);
+        const bytes = Array.isArray(result) ? 0 : (result.bytes || 0);
+        const rawVeventMatches = Array.isArray(result) ? 0 : (result.rawVeventMatches || 0);
         setIcsEvents((prev) => ({
           ...prev,
-          [activeSectionId]: { events, totalParsed, fetchedAt: Date.now(), error: null },
+          [activeSectionId]: { events, totalParsed, bytes, rawVeventMatches, fetchedAt: Date.now(), error: null },
         }));
       })
       .catch((err) => {

@@ -244,7 +244,16 @@
     }
     const allEvents = parseICS(text);
     const inRange = getEventsInRange(text, rangeStart, rangeEnd);
-    return { events: inRange, totalParsed: allEvents.length };
+    // Raw VEVENT marker count straight from the text (parser-independent) —
+    // lets the UI distinguish "calendar is genuinely empty" from "parser
+    // didn't recognize the entries" when investigating a 0-event week.
+    const rawVeventMatches = (text.match(/BEGIN:VEVENT/gi) || []).length;
+    return {
+      events: inRange,
+      totalParsed: allEvents.length,
+      bytes: text.length,
+      rawVeventMatches,
+    };
   }
 
   window.SwipedICS = {

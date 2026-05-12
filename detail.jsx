@@ -367,6 +367,8 @@ function DetailView({
             events={(icsEvents && icsEvents[section.id] && icsEvents[section.id].events) || []}
             icsError={(icsEvents && icsEvents[section.id] && icsEvents[section.id].error) || null}
             icsTotalParsed={(icsEvents && icsEvents[section.id] && icsEvents[section.id].totalParsed) || 0}
+            icsBytes={(icsEvents && icsEvents[section.id] && icsEvents[section.id].bytes) || 0}
+            icsRawVeventMatches={(icsEvents && icsEvents[section.id] && icsEvents[section.id].rawVeventMatches) || 0}
             icsConfigured={!!(icsLinks && icsLinks[section.id])}
             onIcsRefresh={onIcsRefresh}
           />
@@ -1053,6 +1055,8 @@ function WeeklyView({
   events = [],   // read-only ICS events for the active week, already filtered
   icsError = null,
   icsTotalParsed = 0,
+  icsBytes = 0,
+  icsRawVeventMatches = 0,
   icsConfigured = false,
   onIcsRefresh,
 }) {
@@ -1214,9 +1218,12 @@ function WeeklyView({
               fontSize: 10, letterSpacing: '0.06em',
               color: 'rgba(250,128,114,0.55)',
               padding: '6px 0 10px',
+              lineHeight: 1.5,
             }}>
-              {icsTotalParsed === 0
-                ? 'Calendar loaded · 0 events in feed (is the URL the .ics link?)'
+              {icsTotalParsed === 0 && icsRawVeventMatches === 0
+                ? `Calendar loaded · 0 events in feed · ${icsBytes} bytes (proxy may be returning a stub — try Refresh, or in Outlook tap Reset links and republish)`
+                : icsTotalParsed === 0 && icsRawVeventMatches > 0
+                ? `Parser missed ${icsRawVeventMatches} VEVENT entries (${icsBytes} bytes) — bug, send the ICS link to debug`
                 : `Calendar loaded · ${icsTotalParsed} event${icsTotalParsed === 1 ? '' : 's'} in feed, none this week`}
             </div>
           )}
