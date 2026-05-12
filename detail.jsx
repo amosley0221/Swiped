@@ -1864,7 +1864,15 @@ function BudgetDetails({ data, setData, accent }) {
     });
   };
 
-  const totalBalance = safe.accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
+  // Accounts split by kind. Credit cards aren't liquid funds, so they're
+  // listed separately and excluded from Total balance. We surface their
+  // available-credit aggregate so the header still tells the full story.
+  const cashAccounts = safe.accounts.filter((a) => (a.kind || 'cash') !== 'credit');
+  const creditAccounts = safe.accounts.filter((a) => a.kind === 'credit');
+  const totalBalance = cashAccounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
+  const totalCreditLimit = creditAccounts.reduce((s, a) => s + (Number(a.limit) || 0), 0);
+  const totalCreditAvail = creditAccounts.reduce((s, a) => s + (Number(a.available) || 0), 0);
+  const totalCreditUsed = Math.max(0, totalCreditLimit - totalCreditAvail);
   const monthlyIncomeNet = safe.income.reduce((s, i) => s + monthlyNetIncome(i), 0);
   const yearlyIncomeNet = monthlyIncomeNet * 12;
   // Bills now carry a frequency (default 'monthly'). 'one-time' entries
@@ -2002,7 +2010,9 @@ function BudgetDetails({ data, setData, accent }) {
         })}
       </div>
 
-      {/* Accounts — bank / brokerage / wallet, anything that holds money. */}
+      {/* Accounts — bank / brokerage / wallet, anything that holds money.
+          Credit cards live in the same `accounts` list (kind: 'credit') but
+          render as cards below with limit + available instead of balance. */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <SectionTitle>Accounts · {safe.accounts.length}</SectionTitle>
@@ -2010,14 +2020,14 @@ function BudgetDetails({ data, setData, accent }) {
             Total&nbsp;<span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalBalance)}</span>
           </span>
         </div>
-        {safe.accounts.length > 0 && (
+        {cashAccounts.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 28px', gap: 8 }}>
             <div style={colHeadStyle}>Name</div>
             <div style={{ ...colHeadStyle, textAlign: 'right' }}>Balance</div>
             <div />
           </div>
         )}
-        {safe.accounts.map((a) => (
+        {cashAccounts.map((a) => (
           <div key={a.id} style={{
             display: 'grid', gridTemplateColumns: '1fr 130px 28px',
             gap: 8, marginBottom: 8, alignItems: 'center',
@@ -2036,9 +2046,105 @@ function BudgetDetails({ data, setData, accent }) {
             <button onClick={() => removeRow('accounts', a.id)} aria-label="Remove" style={xBtn}>×</button>
           </div>
         ))}
-        <button onClick={() => addRow('accounts', { name: '', balance: '' })} style={addBtn}>
+        <button onClick={() => addRow('accounts', { name: '', balance: '', kind: 'cash' })} style={addBtn}>
           + Add account
         </button>
+
+        {/* Credit cards — separate visual block within Accounts. Each card
+            stores its limit and currently-available credit; used + utilization
+            are derived. They don't contribute to Total balance above. */}
+        <div style={{ marginTop: 18 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <div style={{
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+                color: 'rgba(250,128,114,0.55)',
+              }}>
+                Credit cards{creditAccounts.length > 0 ? ` · ${creditAccounts.length}` : ''}
+              </div>
+              {creditAccounts.length > 0 && (
+                <span style={sumStyle}>
+                  Avail&nbsp;<span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalCreditAvail)}</span>
+                  &nbsp;/&nbsp;
+                  <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(totalCreditLimit)}</span>
+                </span>
+              )}
+            </div>
+            <div style={{ height: 8 }} />
+            {creditAccounts.map((c) => {
+              const limit = Number(c.limit) || 0;
+              const avail = Number(c.available) || 0;
+              const used = Math.max(0, limit - avail);
+              const util = limit > 0 ? Math.min(1, used / limit) : 0;
+              const utilColor = util >= 0.7 ? '#E8704A'
+                : util >= 0.3 ? '#E8C547'
+                : accent;
+              return (
+                <div key={c.id} style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '0.5px solid rgba(255,255,255,0.12)',
+                  borderRadius: 12, padding: 12, marginBottom: 10,
+                  display: 'flex', flexDirection: 'column', gap: 10,
+                }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 28px', gap: 8, alignItems: 'center' }}>
+                    <input
+                      value={c.name} placeholder="Chase Sapphire, Amex, …"
+                      onChange={(e) => updateRow('accounts', c.id, { name: e.target.value })}
+                      style={baseField}
+                    />
+                    <button onClick={() => removeRow('accounts', c.id)} aria-label="Remove" style={xBtn}>×</button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={colHeadStyle}>Limit</div>
+                      <input
+                        type="number" inputMode="decimal" step="0.01"
+                        value={c.limit ?? ''} placeholder="0.00"
+                        onChange={(e) => updateRow('accounts', c.id, { limit: e.target.value })}
+                        style={moneyField}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={colHeadStyle}>Available</div>
+                      <input
+                        type="number" inputMode="decimal" step="0.01"
+                        value={c.available ?? ''} placeholder="0.00"
+                        onChange={(e) => updateRow('accounts', c.id, { available: e.target.value })}
+                        style={moneyField}
+                      />
+                    </div>
+                  </div>
+                  {limit > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{
+                        fontFamily: 'Geist Mono, ui-monospace, monospace',
+                        fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
+                        color: 'rgba(250,128,114,0.45)',
+                        display: 'flex', justifyContent: 'space-between',
+                      }}>
+                        <span>Used&nbsp;<span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(used)}</span></span>
+                        <span style={{ color: utilColor, fontVariantNumeric: 'tabular-nums' }}>{Math.round(util * 100)}%</span>
+                      </div>
+                      <div style={{
+                        height: 4, borderRadius: 2,
+                        background: 'rgba(255,255,255,0.08)',
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{
+                          width: `${util * 100}%`, height: '100%',
+                          background: utilColor,
+                          transition: 'width 200ms ease',
+                        }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <button onClick={() => addRow('accounts', { name: '', limit: '', available: '', kind: 'credit' })} style={addBtn}>
+              + Add credit card
+            </button>
+          </div>
       </div>
 
       {/* Income — per-source cards. Pick hourly or salaried, fill in the
