@@ -108,6 +108,10 @@ function SettingsSheet({
               users who want a copy independent of cloud sync. */}
           <BackupSection tf={tf} accent={accent} />
 
+          {/* Optional custom CORS proxy — useful when the public free proxy
+              chain is rate-limited or blocked for the user's calendar host. */}
+          <CustomProxySection tf={tf} accent={accent} />
+
           {/* user name — used for Home's "Welcome <first name>" headline */}
           {onUserName && (
             <div style={{ marginBottom: 22 }}>
@@ -863,6 +867,64 @@ function BackupSection({ tf, accent }) {
             {status.text}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Custom CORS proxy — when the public free proxies are blocked / overloaded
+// for the user's calendar host, they can paste their own proxy URL here.
+// Most lightweight option is a free Cloudflare Worker; see the help text.
+function CustomProxySection({ tf, accent }) {
+  const [value, setValue] = React.useState(() => {
+    try { return localStorage.getItem('swiped.customCorsProxy') || ''; }
+    catch (e) { return ''; }
+  });
+  const onChange = (v) => {
+    setValue(v);
+    try {
+      if (v.trim()) localStorage.setItem('swiped.customCorsProxy', v.trim());
+      else localStorage.removeItem('swiped.customCorsProxy');
+    } catch (e) { /* ignore */ }
+  };
+  return (
+    <div style={{ marginBottom: 22 }}>
+      <Label tf={tf}>Custom CORS proxy (optional)</Label>
+      <div style={{
+        background: '#fff',
+        border: '0.5px solid rgba(11,11,14,0.1)',
+        borderRadius: 14, padding: '14px 16px',
+        display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        <div style={{
+          fontFamily: tf.family, fontSize: 13.5, color: '#0B0B0E',
+          lineHeight: 1.45,
+        }}>
+          If the calendar feed fails (public proxies overloaded), paste your
+          own proxy URL here. Use <code>{'{url}'}</code> where the calendar URL goes,
+          e.g. <code>https://my-worker.workers.dev/?url={'{url}'}</code>.
+        </div>
+        <input
+          type="url" inputMode="url" autoCapitalize="off" autoCorrect="off"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://your-proxy.example.com/?url={url}"
+          style={{
+            appearance: 'none', boxSizing: 'border-box', width: '100%',
+            border: '0.5px solid rgba(11,11,14,0.18)',
+            background: '#fff', borderRadius: 10,
+            padding: '10px 12px', outline: 'none',
+            fontFamily: 'Geist Mono, ui-monospace, monospace',
+            fontSize: 12, color: '#0B0B0E',
+          }}
+        />
+        <div style={{
+          fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.1em',
+          textTransform: 'uppercase', color: 'rgba(11,11,14,0.4)',
+          lineHeight: 1.5,
+        }}>
+          Easiest free option: a Cloudflare Worker (~10 lines of code, free tier covers 100k requests/day). Tried only if every public proxy fails.
+        </div>
       </div>
     </div>
   );

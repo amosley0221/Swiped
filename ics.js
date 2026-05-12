@@ -21,12 +21,27 @@
 
   // CORS proxies tried in order — Outlook and Google calendar URLs don't
   // send CORS headers, so the PWA can't fetch them directly. Free proxies
-  // periodically rate-limit or 403 individual hosts; falling back through
-  // a chain keeps the calendar working when one provider hiccups.
+  // periodically rate-limit, 503, or get blocked by Microsoft entirely;
+  // falling back through a long chain keeps the calendar working when an
+  // individual provider hiccups. Direct fetch is tried first in case the
+  // calendar host happens to send permissive CORS headers (Google does).
   const CORS_PROXIES = [
+    (u) => u, // direct — works for Google Calendar ICS links
     (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
     (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
     (u) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
+    (u) => 'https://thingproxy.freeboard.io/fetch/' + u,
+    (u) => 'https://corsproxy.org/?' + encodeURIComponent(u),
+    // User-provided proxy from Settings ("Custom CORS proxy"). Templates with
+    // {url} get the encoded URL substituted; bare prefixes are appended.
+    (u) => {
+      try {
+        const custom = (window.localStorage.getItem('swiped.customCorsProxy') || '').trim();
+        if (!custom) return null;
+        if (custom.includes('{url}')) return custom.replace('{url}', encodeURIComponent(u));
+        return custom + encodeURIComponent(u);
+      } catch (e) { return null; }
+    },
   ];
   const CACHE_PREFIX = 'swiped.ics.cache.';
   const CACHE_TTL_MS = 15 * 60 * 1000;
@@ -35,8 +50,10 @@
     if (!url) throw new Error('No ICS URL');
     const errors = [];
     for (const make of CORS_PROXIES) {
+      const target = make(url);
+      if (!target) continue;
       try {
-        const res = await fetch(make(url));
+        const res = await fetch(target);
         if (!res.ok) { errors.push(`HTTP ${res.status}`); continue; }
         const text = await res.text();
         // Some proxies hand back HTML error pages with a 200 — sanity-check
