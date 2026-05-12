@@ -5,7 +5,7 @@
 // no-cache HTTP headers configured in render.yaml continue to control
 // freshness. No precaching, no offline mode for now.
 
-const VERSION = '2026-05-12-01';
+const VERSION = '2026-05-13-01';
 
 self.addEventListener('install', () => {
   // Replace any older SW version immediately.
