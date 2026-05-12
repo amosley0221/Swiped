@@ -495,15 +495,24 @@ function App() {
     if (contentKey === 'school') {
       const overall = calcOverallGPA(schoolSemesters);
       const gpaStr = overall.gpa == null ? '—' : overall.gpa.toFixed(2);
-      const dueStat = baseContent.stats.find((s) => /due/i.test(s.label))
-        || baseContent.stats[1]
-        || { label: 'Due ≤7d', value: '0' };
+      // Live "due this week" count = open user-added tasks + read-only ICS
+      // events imported for the active week. Replaces the seeded "3" so the
+      // wheel brief reflects what's actually on the plate.
+      const schoolId = selected?.id || 'school';
+      const wk = (weeklyActiveKey && weeklyActiveKey[schoolId]) || weekKey(new Date());
+      const weekStore = (weeklyData[schoolId] && weeklyData[schoolId][wk]) || { tasks: [] };
+      const openTasks = (weekStore.tasks || []).filter((t2) => !t2.done).length;
+      const eventCount = (icsEvents[schoolId]?.events || []).length;
+      const dueCount = openTasks + eventCount;
       return {
         ...baseContent,
+        brief: dueCount === 0
+          ? 'No assignments due'
+          : `${dueCount} assignment${dueCount === 1 ? '' : 's'} due`,
         stats: [
           { label: 'GPA', value: gpaStr },
           { label: 'Credits', value: String(overall.credits) },
-          dueStat,
+          { label: 'Due ≤7d', value: String(dueCount) },
         ],
         semesters: schoolSemesters,
       };
@@ -647,7 +656,7 @@ function App() {
       };
     }
     return baseContent;
-  }, [contentKey, baseContent, schoolSemesters, peopleData, selected, t.userName, t.accent, sections.length, budgetData]);
+  }, [contentKey, baseContent, schoolSemesters, peopleData, selected, t.userName, t.accent, sections.length, budgetData, weeklyData, weeklyActiveKey, icsEvents]);
 
   // For the wheel's icon lookup, ensure each section has a valid iconKey
   const wheelSections = sections.map((s) => ({
