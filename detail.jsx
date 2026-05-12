@@ -2244,7 +2244,7 @@ function BudgetDetails({ data, setData, accent }) {
                 />
                 <button onClick={() => removeRow('bills', b.id)} aria-label="Remove" style={xBtn}>×</button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr 1fr', gap: 8 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <div style={colHeadStyle}>Amount</div>
                   <input
@@ -2354,7 +2354,7 @@ function BudgetDetails({ data, setData, accent }) {
                 />
                 <button onClick={() => removeRow('subscriptions', sub.id)} aria-label="Remove" style={xBtn}>×</button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr 1fr', gap: 8 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <div style={colHeadStyle}>Amount</div>
                   <input
