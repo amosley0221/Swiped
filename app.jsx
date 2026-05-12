@@ -556,17 +556,46 @@ function App() {
       const fmt = (n) => n === 0 ? '$0'
         : n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: n < 1000 ? 2 : 0 });
       const accountCount = (bd.accounts || []).length;
+      // List of every individual outflow falling inside the next 7 days,
+      // sorted by date. Rendered under the stat strip so the user sees what
+      // makes up the Due ≤7d total at a glance.
+      const upcoming = [];
+      (bd.bills || []).forEach((b) => {
+        const d = nextRenewal({ renewalDate: b.dueDate, frequency: b.frequency || 'monthly' });
+        if (d && d >= today && d <= sevenOut) {
+          upcoming.push({ kind: 'bill', name: b.name || 'Bill', amount: Number(b.amount) || 0, date: d });
+        }
+      });
+      (bd.subscriptions || []).forEach((sub) => {
+        const d = nextRenewal(sub);
+        if (d && d >= today && d <= sevenOut) {
+          upcoming.push({ kind: 'sub', name: sub.name || 'Subscription', amount: Number(sub.amount) || 0, date: d });
+        }
+      });
+      (bd.accounts || []).forEach((a) => {
+        if (a.kind !== 'credit') return;
+        const d = nextRenewal({ renewalDate: a.dueDate, frequency: 'monthly' });
+        if (d && d >= today && d <= sevenOut) {
+          upcoming.push({ kind: 'credit', name: a.name || 'Credit card', amount: Number(a.amountDue) || 0, date: d });
+        }
+      });
+      upcoming.sort((a, b) => a.date - b.date);
       return {
         ...baseContent,
         headline: 'This month',
-        brief: accountCount === 0
-          ? 'Add an account to start'
-          : `${fmt(totalBalance)} across ${accountCount} account${accountCount === 1 ? '' : 's'}`,
+        // Brief line removed — stats sit directly under the headline now,
+        // and the upcoming list (below) replaces the prose summary.
+        brief: null,
         stats: [
           { label: 'Balance', value: fmt(totalBalance) },
           { label: 'Income', value: monthlyIncome > 0 ? `${fmt(monthlyIncome)}/mo` : '—' },
           { label: 'Due ≤7d', value: due7d > 0 ? fmt(due7d) : '—' },
         ],
+        extras: upcoming.map((u) => ({
+          label: u.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+          name: u.name,
+          value: fmt(u.amount),
+        })),
       };
     }
     if (contentKey === 'home') {
@@ -957,14 +986,17 @@ function BriefPanel({ section, content, accent, tf, pulseKey, scale = 1 }) {
       }}>
         {content.headline}
       </div>
-      {/* brief */}
-      <div style={{
-        fontFamily: tf.family, fontSize: 17 * s, lineHeight: 1.35,
-        color: 'rgba(11,11,14,0.62)', letterSpacing: '-0.01em',
-        textWrap: 'pretty',
-      }}>
-        {content.brief}
-      </div>
+      {/* brief — hidden when null (e.g. budget, which renders an upcoming
+          list under the stats instead of a prose summary). */}
+      {content.brief && (
+        <div style={{
+          fontFamily: tf.family, fontSize: 17 * s, lineHeight: 1.35,
+          color: 'rgba(11,11,14,0.62)', letterSpacing: '-0.01em',
+          textWrap: 'pretty',
+        }}>
+          {content.brief}
+        </div>
+      )}
 
       {/* mini stat strip — skipped entirely when stats is empty (e.g. a
           person with no birthday set has nothing to surface here yet). */}
@@ -983,6 +1015,39 @@ function BriefPanel({ section, content, accent, tf, pulseKey, scale = 1 }) {
                 fontVariantNumeric: 'tabular-nums',
                 whiteSpace: 'nowrap',
               }}>{s2.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* extras — section-specific list rendered under the stat strip.
+          Budget uses this to surface each individual bill / subscription /
+          credit-card payment falling inside the next 7 days. */}
+      {content.extras && content.extras.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 * s, marginTop: 14 * s }}>
+          {content.extras.map((x, i) => (
+            <div key={i} style={{
+              display: 'grid', gridTemplateColumns: '1fr auto',
+              alignItems: 'baseline', gap: 12 * s,
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1 * s, minWidth: 0 }}>
+                <div style={{
+                  fontFamily: tf.family, fontSize: 14 * s, fontWeight: 500,
+                  letterSpacing: '-0.01em', color: '#0B0B0E',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>{x.name}</div>
+                <div style={{
+                  fontFamily: tf.mono, fontSize: 9 * s, letterSpacing: '0.14em',
+                  textTransform: 'uppercase', color: 'rgba(11,11,14,0.4)',
+                  whiteSpace: 'nowrap',
+                }}>{x.label}</div>
+              </div>
+              <div style={{
+                fontFamily: tf.family, fontSize: 14 * s, fontWeight: 500,
+                letterSpacing: '-0.01em', color: '#0B0B0E',
+                fontVariantNumeric: 'tabular-nums',
+                whiteSpace: 'nowrap',
+              }}>{x.value}</div>
             </div>
           ))}
         </div>
