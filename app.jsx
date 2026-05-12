@@ -132,13 +132,14 @@ function App() {
   // the wheel radius + protrusion proportionally, capped at 1.8x so the
   // wheel doesn't take over a desktop monitor.
   // Scale by whichever dimension is the limiting factor. A width-only scale
-  // looks correct on a tall narrow viewport (Fold cover, 980×2151 → ~1.8)
-  // but blows up on a Fold inner unfolded screen (≈1900×900) where the
-  // browser still reports a wide viewport but the vertical space is much
-  // shorter — width-only would scale everything 1.8× and bury the brief
-  // panel under the wheel. Taking the min ensures the inner Fold falls
-  // back to phone-baseline 1.0 while the cover keeps its 1.8.
-  const stageScale = Math.min(1.8, Math.max(1, Math.min(W / 440, H / 860)));
+  // looks correct on a tall narrow viewport (Fold cover, 980×2151) but
+  // blows up on a Fold inner unfolded screen (≈1900×900) where the browser
+  // still reports a wide viewport but the vertical space is much shorter
+  // — width-only would scale everything large and bury the brief panel
+  // under the wheel. Taking the min keeps the inner Fold at phone-baseline
+  // while the cover still hits the cap. Cap raised to 2.0 so the cover's
+  // tall-narrow physical screen reads comfortably.
+  const stageScale = Math.min(2.0, Math.max(1, Math.min(W / 440, H / 860)));
 
   const sections = t.sections;
 
