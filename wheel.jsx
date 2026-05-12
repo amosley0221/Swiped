@@ -18,6 +18,7 @@ function Wheel({
   onDrag,          // (deltaIndex) => void   incremental during pointer drag
   onSettle,        // (snappedIdx) => void   when fling settles
   onLiquidStart,   // ({startX, startY}) => start liquid gesture
+  scale = 1,       // typography + icon scale (matches the brief panel's stageScale)
 }) {
   const cx = width / 2;
   const cy = height + (radius - protrusion); // pivot below screen
@@ -176,15 +177,15 @@ function Wheel({
             }}
           >
             <div style={{
-              width: 26, height: 26, display: 'flex',
+              width: 26 * scale, height: 26 * scale, display: 'flex',
               alignItems: 'center', justifyContent: 'center',
               borderRadius: section.contentKey === 'person' ? '50%' : 0,
               overflow: 'hidden',
             }}>
               {section.iconData
                 ? <img src={section.iconData} alt="" style={{
-                    width: section.contentKey === 'person' ? 26 : 22,
-                    height: section.contentKey === 'person' ? 26 : 22,
+                    width: (section.contentKey === 'person' ? 26 : 22) * scale,
+                    height: (section.contentKey === 'person' ? 26 : 22) * scale,
                     objectFit: section.contentKey === 'person' ? 'cover' : 'contain',
                     filter: isSelected ? 'none' : 'opacity(0.6)',
                   }} />
@@ -194,7 +195,7 @@ function Wheel({
               style={{
                 fontFamily: '"Instrument Serif", Georgia, serif',
                 fontStyle: 'italic',
-                fontSize: isSelected ? 20 : 16,
+                fontSize: (isSelected ? 20 : 16) * scale,
                 fontWeight: 400,
                 letterSpacing: '-0.01em',
                 whiteSpace: 'nowrap',

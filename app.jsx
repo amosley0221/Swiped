@@ -671,7 +671,8 @@ function App() {
         sections={wheelSections}
         index={idx}
         accent={t.accent}
-        bottom={protrusion + 28}
+        bottom={protrusion + 28 * stageScale}
+        scale={stageScale}
       />
       {/* small upward arrow chip floating above wheel — touch handle hint */}
 
@@ -689,10 +690,16 @@ function App() {
         onDrag={onWheelDrag}
         onSettle={onWheelSettle}
         onLiquidStart={onLiquidStart}
+        scale={stageScale}
       />
 
       {/* Hint */}
-      <SwipeHint visible={!liquid.active && !detailOpen} protrusion={protrusion} tf={tf} />
+      <SwipeHint
+        visible={!liquid.active && !detailOpen}
+        protrusion={protrusion}
+        tf={tf}
+        scale={stageScale}
+      />
 
       {/* Sheet — black curved panel. Top edge peaks at the finger; the edges
           trail below by a lag that shrinks as the sheet nears fully open. */}
@@ -897,11 +904,11 @@ function BriefPanel({ section, content, accent, tf, pulseKey, scale = 1 }) {
   );
 }
 
-function SectionDots({ sections, index, accent, bottom }) {
+function SectionDots({ sections, index, accent, bottom, scale = 1 }) {
   return (
     <div style={{
       position: 'absolute', left: 0, right: 0, bottom,
-      display: 'flex', justifyContent: 'center', gap: 6,
+      display: 'flex', justifyContent: 'center', gap: 6 * scale,
       zIndex: 3, pointerEvents: 'none',
     }}>
       {sections.map((s, i) => {
@@ -909,7 +916,9 @@ function SectionDots({ sections, index, accent, bottom }) {
         const isSelected = dist < 0.5;
         return (
           <div key={s.id} style={{
-            width: isSelected ? 16 : 4, height: 4, borderRadius: 2,
+            width: (isSelected ? 16 : 4) * scale,
+            height: 4 * scale,
+            borderRadius: 2 * scale,
             background: isSelected ? accent : 'rgba(11,11,14,0.18)',
             transition: 'width 0.25s ease, background 0.25s ease',
           }} />
@@ -919,24 +928,24 @@ function SectionDots({ sections, index, accent, bottom }) {
   );
 }
 
-function SwipeHint({ visible, protrusion, tf }) {
+function SwipeHint({ visible, protrusion, tf, scale = 1 }) {
   return (
     <div style={{
       position: 'absolute',
       left: 0, right: 0,
-      bottom: protrusion + 60,
+      bottom: protrusion + 60 * scale,
       display: 'flex', justifyContent: 'center',
       pointerEvents: 'none', zIndex: 8,
       opacity: visible ? 0.6 : 0,
       transition: 'opacity 0.3s',
     }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
+        display: 'flex', alignItems: 'center', gap: 6 * scale,
         color: 'rgba(11,11,14,0.5)',
-        fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.2em',
+        fontFamily: tf.mono, fontSize: 9 * scale, letterSpacing: '0.2em',
         textTransform: 'uppercase',
       }}>
-        <svg width="8" height="10" viewBox="0 0 8 10" fill="none">
+        <svg width={8 * scale} height={10 * scale} viewBox="0 0 8 10" fill="none">
           <path d="M4 9 V1 M1 4l3-3 3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         <span style={{ whiteSpace: 'nowrap' }}>Hold &amp; swipe up</span>
