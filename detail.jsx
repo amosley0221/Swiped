@@ -1066,6 +1066,27 @@ function WeeklyView({
   const [animating, setAnimating] = React.useState(false);
   const dragRef = React.useRef(null);
 
+  // Partition ICS events into past / today-upcoming / later-this-week. Past
+  // meetings drop down to the Recent section so the active task list only
+  // surfaces what's still ahead and the "open" counter doesn't keep
+  // ticking from completed meetings.
+  const eventPartition = React.useMemo(() => {
+    const now = new Date();
+    const today = new Date(now); today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    const out = { today: [], later: [], past: [] };
+    (events || []).forEach((e) => {
+      const start = new Date(e.start);
+      const end = new Date(e.end);
+      if (end < now) out.past.push(e);
+      else if (start < tomorrow) out.today.push(e);
+      else out.later.push(e);
+    });
+    // Past events are most-recent-first under "Recent".
+    out.past.sort((a, b) => new Date(b.start) - new Date(a.start));
+    return out;
+  }, [events]);
+
   const goWeek = React.useCallback((dir) => {
     const next = new Date(weekDate);
     next.setDate(next.getDate() + dir * 7);
@@ -1189,7 +1210,11 @@ function WeeklyView({
         }}>
           {(() => {
             const openTasks = tasks.filter((t) => !t.done).length;
-            const totalOpen = openTasks + (events ? events.length : 0);
+            // Only count meetings that haven't ended yet — past events
+            // move to Recent, so they shouldn't bloat "open" either.
+            const now = new Date();
+            const upcomingEvents = (events || []).filter((e) => new Date(e.end) >= now);
+            const totalOpen = openTasks + upcomingEvents.length;
             return (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <SectionTitle>Tasks · {totalOpen} open</SectionTitle>
@@ -1240,54 +1265,43 @@ function WeeklyView({
               Calendar fetch failed: {icsError}
             </div>
           )}
-          {(() => {
-            // Split events into "today" and "rest of week" so the user sees
-            // what's actually happening now without scrolling past every
-            // other day. Today is highlighted with an accent-colored header.
-            const today = new Date(); today.setHours(0, 0, 0, 0);
-            const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-            const eventsToday = (events || []).filter((e) => {
-              const d = new Date(e.start);
-              return d >= today && d < tomorrow;
-            });
-            const eventsRest = (events || []).filter((e) => !eventsToday.includes(e));
-            return (
-              <>
-                {eventsToday.length > 0 && (
-                  <div style={{ marginBottom: 18 }}>
-                    <div style={{
-                      fontFamily: 'Geist Mono, ui-monospace, monospace',
-                      fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
-                      color: accent, marginBottom: 8,
-                    }}>
-                      Today · {eventsToday.length} meeting{eventsToday.length === 1 ? '' : 's'}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                      {eventsToday.map((e) => <EventRow key={e.uid} event={e} />)}
-                    </div>
-                  </div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
-                  {/* Rest of the week's events (read-only, sorted
-                      chronologically). They live in the source calendar. */}
-                  {eventsRest.map((e) => <EventRow key={e.uid} event={e} />)}
-                  {tasks.length === 0 && (!events || events.length === 0) && (
-                    <div style={{
-                      color: 'rgba(250,128,114,0.4)', fontSize: 13,
-                      padding: '12px 0',
-                    }}>No tasks for this week. Add one above.</div>
-                  )}
-                  {tasks.map((t) => (
-                    <TaskRow key={t.id} task={t} accent={accent} onToggle={onToggle} onRemove={onRemove} />
-                  ))}
-                </div>
-              </>
-            );
-          })()}
+          {eventPartition.today.length > 0 && (
+            <div style={{ marginBottom: 18 }}>
+              <div style={{
+                fontFamily: 'Geist Mono, ui-monospace, monospace',
+                fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
+                color: accent, marginBottom: 8,
+              }}>
+                Today · {eventPartition.today.length} meeting{eventPartition.today.length === 1 ? '' : 's'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {eventPartition.today.map((e) => <EventRow key={e.uid} event={e} />)}
+              </div>
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
+            {/* Later this week — upcoming meetings beyond today. */}
+            {eventPartition.later.map((e) => <EventRow key={e.uid} event={e} />)}
+            {tasks.length === 0
+              && eventPartition.today.length === 0
+              && eventPartition.later.length === 0 && (
+              <div style={{
+                color: 'rgba(250,128,114,0.4)', fontSize: 13,
+                padding: '12px 0',
+              }}>No tasks for this week. Add one above.</div>
+            )}
+            {tasks.map((t) => (
+              <TaskRow key={t.id} task={t} accent={accent} onToggle={onToggle} onRemove={onRemove} />
+            ))}
+          </div>
 
           <SectionTitle>Recent</SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
-            {log.length === 0 && (
+            {/* Past meetings from the imported calendar — show first since
+                they're the most "fresh" recent activity. They don't count
+                toward open tasks. */}
+            {eventPartition.past.map((e) => <EventRow key={e.uid} event={e} />)}
+            {log.length === 0 && eventPartition.past.length === 0 && (
               <div style={{
                 color: 'rgba(250,128,114,0.35)', fontSize: 12,
                 padding: '6px 0', fontFamily: 'Geist Mono, ui-monospace, monospace',

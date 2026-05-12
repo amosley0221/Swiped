@@ -556,9 +556,13 @@ function App() {
       const weekStore = (weeklyData[workId] && weeklyData[workId][wk]) || { tasks: [] };
       const openTasks = (weekStore.tasks || []).filter((t2) => !t2.done).length;
       const events = icsEvents[workId]?.events || [];
-      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const now = new Date();
+      const today = new Date(now); today.setHours(0, 0, 0, 0);
       const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-      const eventsToday = events.filter((e) => {
+      // Past meetings (end < now) move to the Recent section in the detail
+      // view and don't count toward "open" or the Today / Week stats.
+      const upcomingEvents = events.filter((e) => new Date(e.end) >= now);
+      const eventsToday = upcomingEvents.filter((e) => {
         const d = new Date(e.start);
         return d >= today && d < tomorrow;
       }).length;
@@ -575,7 +579,7 @@ function App() {
         stats: [
           { label: 'Today', value: String(eventsToday) },
           { label: 'Tasks', value: String(openTasks) },
-          { label: 'Week', value: String(events.length) },
+          { label: 'Week', value: String(upcomingEvents.length) },
         ],
       };
     }
