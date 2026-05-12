@@ -101,9 +101,12 @@ function SettingsSheet({
 
         {/* scroll */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 24px' }}>
-          {/* sync — Google sign-in or email magic link. Survives across
-              devices via Firestore (see sync.js). */}
+          {/* sync — email + password auth via Supabase (see sync.js). */}
           <SyncSection tf={tf} accent={accent} />
+
+          {/* Local backup — JSON export / import. Belt-and-suspenders for
+              users who want a copy independent of cloud sync. */}
+          <BackupSection tf={tf} accent={accent} />
 
           {/* user name — used for Home's "Welcome <first name>" headline */}
           {onUserName && (
@@ -524,6 +527,17 @@ function SyncSection({ tf, accent }) {
     setBusy(true);
     sync.signOut().finally(() => setBusy(false));
   };
+  const [resetMsg, setResetMsg] = React.useState(null);
+  const onForgotPassword = () => {
+    const addr = email.trim();
+    if (!addr) { setResetMsg({ kind: 'err', text: 'Enter your email above first.' }); return; }
+    if (!sync.sendPasswordReset) { setResetMsg({ kind: 'err', text: 'Reset not available.' }); return; }
+    setBusy(true);
+    sync.sendPasswordReset(addr)
+      .then(() => setResetMsg({ kind: 'ok', text: `Reset link sent to ${addr}. Check your spam folder if it doesn't arrive in a minute.` }))
+      .catch((err) => setResetMsg({ kind: 'err', text: err.message || 'Could not send reset email.' }))
+      .finally(() => setBusy(false));
+  };
   const canSubmit = email.trim() && password && !busy;
 
   return (
@@ -654,11 +668,39 @@ function SyncSection({ tf, accent }) {
               </div>
             </form>
             <div style={{
-              fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.12em',
-              textTransform: 'uppercase', color: 'rgba(11,11,14,0.4)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+              gap: 8,
             }}>
-              First time? Tap Create account.
+              <div style={{
+                fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.12em',
+                textTransform: 'uppercase', color: 'rgba(11,11,14,0.4)',
+              }}>
+                First time? Tap Create account.
+              </div>
+              <button
+                type="button"
+                onClick={onForgotPassword}
+                disabled={busy}
+                style={{
+                  appearance: 'none', border: 0, background: 'transparent',
+                  cursor: busy ? 'default' : 'pointer', padding: 0,
+                  fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.12em',
+                  textTransform: 'uppercase', color: accent, fontWeight: 600,
+                  opacity: busy ? 0.5 : 1,
+                }}
+              >Forgot password?</button>
             </div>
+            {resetMsg && (
+              <div style={{
+                fontFamily: tf.family, fontSize: 12.5, lineHeight: 1.45,
+                color: resetMsg.kind === 'ok' ? 'rgba(11,11,14,0.7)' : '#A03030',
+                background: resetMsg.kind === 'ok' ? 'rgba(79,168,98,0.1)' : 'rgba(160,48,48,0.08)',
+                border: `0.5px solid ${resetMsg.kind === 'ok' ? 'rgba(79,168,98,0.3)' : 'rgba(160,48,48,0.25)'}`,
+                borderRadius: 10, padding: '10px 12px',
+              }}>
+                {resetMsg.text}
+              </div>
+            )}
             {status === 'sent-email' && (
               <div style={{
                 fontFamily: tf.family, fontSize: 12.5, lineHeight: 1.45,
@@ -682,6 +724,144 @@ function SyncSection({ tf, accent }) {
               </div>
             )}
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Backup — export every Swiped-owned localStorage key as a single JSON
+// file, or import one back. Independent of cloud sync; works offline.
+// Useful for: transferring to a new account/email, archiving a snapshot,
+// or recovering from an accidental data wipe.
+function BackupSection({ tf, accent }) {
+  const [status, setStatus] = React.useState(null);
+  const fileInputRef = React.useRef(null);
+
+  const isOurKey = (k) => /^swiped\./.test(k) || /^firebase:/.test(k);
+
+  const onExport = () => {
+    try {
+      const data = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!isOurKey(k)) continue;
+        data[k] = localStorage.getItem(k);
+      }
+      const payload = {
+        kind: 'swiped-backup', version: 1,
+        exportedAt: new Date().toISOString(),
+        data,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const today = new Date().toISOString().slice(0, 10);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `swiped-backup-${today}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      const keys = Object.keys(data).length;
+      setStatus({ kind: 'ok', text: `Exported ${keys} key${keys === 1 ? '' : 's'}. Save the file somewhere safe (Drive, iCloud, email).` });
+    } catch (err) {
+      setStatus({ kind: 'err', text: err.message || 'Export failed.' });
+    }
+  };
+
+  const onPickFile = () => { fileInputRef.current && fileInputRef.current.click(); };
+
+  const onImportFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // allow re-picking the same file
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = String(reader.result || '');
+        const parsed = JSON.parse(text);
+        if (parsed.kind !== 'swiped-backup' || !parsed.data || typeof parsed.data !== 'object') {
+          throw new Error('Not a Swiped backup file.');
+        }
+        const ok = window.confirm(
+          `Restore ${Object.keys(parsed.data).length} entries from ${parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString() : 'this file'}?\n\nThis overwrites your current sections, tasks, contacts, and budget with the backup.`
+        );
+        if (!ok) return;
+        // Wipe existing swiped.* keys first so removed entries don't linger.
+        const drop = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (isOurKey(k)) drop.push(k);
+        }
+        drop.forEach((k) => localStorage.removeItem(k));
+        Object.keys(parsed.data).forEach((k) => {
+          localStorage.setItem(k, parsed.data[k]);
+        });
+        setStatus({ kind: 'ok', text: 'Restored. Reloading…' });
+        setTimeout(() => window.location.reload(), 600);
+      } catch (err) {
+        setStatus({ kind: 'err', text: err.message || 'Could not read that file.' });
+      }
+    };
+    reader.onerror = () => setStatus({ kind: 'err', text: 'Could not read that file.' });
+    reader.readAsText(file);
+  };
+
+  return (
+    <div style={{ marginBottom: 22 }}>
+      <Label tf={tf}>Backup</Label>
+      <div style={{
+        background: '#fff',
+        border: '0.5px solid rgba(11,11,14,0.1)',
+        borderRadius: 14, padding: '14px 16px',
+        display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        <div style={{
+          fontFamily: tf.family, fontSize: 13.5, color: '#0B0B0E',
+          lineHeight: 1.4,
+        }}>
+          Save a JSON snapshot of all your sections, tasks, contacts, and
+          budgets. Restore it later on this device or any other.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button
+            onClick={onExport}
+            style={{
+              appearance: 'none', cursor: 'pointer',
+              border: 0, background: accent, color: '#0B0B0E',
+              padding: '11px 14px', borderRadius: 10,
+              fontFamily: tf.mono, fontSize: 10, letterSpacing: '0.14em',
+              textTransform: 'uppercase', fontWeight: 600,
+            }}
+          >Export</button>
+          <button
+            onClick={onPickFile}
+            style={{
+              appearance: 'none', cursor: 'pointer',
+              border: '0.5px solid rgba(11,11,14,0.18)',
+              background: 'transparent', color: '#0B0B0E',
+              padding: '11px 14px', borderRadius: 10,
+              fontFamily: tf.mono, fontSize: 10, letterSpacing: '0.14em',
+              textTransform: 'uppercase', fontWeight: 600,
+            }}
+          >Import</button>
+        </div>
+        <input
+          ref={fileInputRef} type="file" accept="application/json,.json"
+          onChange={onImportFile}
+          style={{ display: 'none' }}
+        />
+        {status && (
+          <div style={{
+            fontFamily: tf.family, fontSize: 12.5, lineHeight: 1.45,
+            color: status.kind === 'ok' ? 'rgba(11,11,14,0.7)' : '#A03030',
+            background: status.kind === 'ok' ? 'rgba(79,168,98,0.1)' : 'rgba(160,48,48,0.08)',
+            border: `0.5px solid ${status.kind === 'ok' ? 'rgba(79,168,98,0.3)' : 'rgba(160,48,48,0.25)'}`,
+            borderRadius: 10, padding: '10px 12px',
+          }}>
+            {status.text}
+          </div>
         )}
       </div>
     </div>

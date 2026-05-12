@@ -339,12 +339,23 @@
     return client.auth.signOut();
   }
 
+  // Send a password-reset link. Supabase handles delivery + token issuance;
+  // the user follows the email link, sets a new password, and signs back in.
+  async function sendPasswordReset(email) {
+    if (!client) throw new Error('Sync not initialized');
+    const { error } = await client.auth.resetPasswordForEmail((email || '').trim(), {
+      redirectTo: window.location.origin + '/app',
+    });
+    if (error) throw error;
+  }
+
   // Public surface — used by settings.jsx to render the sign-in UI.
   window.SwipedSync = {
     init,
     signInPassword,
     signUpPassword,
     signOut,
+    sendPasswordReset,
     get user() { return currentUser; },
     get status() { return status; },
     get lastSyncedAt() { return lastSyncedAt; },
