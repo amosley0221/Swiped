@@ -2,7 +2,11 @@
 // Slides up from bottom. Rename, reorder, change icon (preset or upload),
 // remove, and add new sections from the template library.
 
-function SettingsSheet({ open, sections, onChange, onClose, accent, tf, onResetSchoolData, userName, onUserName }) {
+function SettingsSheet({
+  open, sections, onChange, onClose, accent, tf, onResetSchoolData,
+  userName, onUserName,
+  icsLinks = {}, onIcsUrl,
+}) {
   const [editing, setEditing] = React.useState(null); // section index being icon-edited
 
   const updateAt = (i, patch) => onChange(sections.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
@@ -144,6 +148,8 @@ function SettingsSheet({ open, sections, onChange, onClose, accent, tf, onResetS
                 onDown={i < sections.length - 1 ? () => moveDown(i) : null}
                 editingIcon={editing === i}
                 onEditIcon={() => setEditing(editing === i ? null : i)}
+                icsUrl={icsLinks[s.id] || ''}
+                onIcsUrl={onIcsUrl ? ((url) => onIcsUrl(s.id, url)) : null}
               />
             ))}
           </div>
@@ -262,8 +268,10 @@ function Label({ tf, children }) {
 }
 
 function SectionRow({ section, accent, tf, onName, onContent, onIcon, onRemove,
-                      onUp, onDown, editingIcon, onEditIcon }) {
+                      onUp, onDown, editingIcon, onEditIcon,
+                      icsUrl = '', onIcsUrl }) {
   const fileRef = React.useRef(null);
+  const isWeekly = section.contentKey === 'work' || section.contentKey === 'school';
   const onUpload = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -384,6 +392,51 @@ function SectionRow({ section, accent, tf, onName, onContent, onIcon, onRemove,
                   </svg>)}
             </button>
             <input ref={fileRef} type="file" accept="image/*" onChange={onUpload} style={{ display: 'none' }} />
+          </div>
+        </div>
+      )}
+
+      {/* External calendar (ICS) — Outlook / Google / any RFC-5545 feed.
+          Available on Work and School sections (the ones with a weekly
+          view). Pasted URL is fetched through a CORS proxy on demand,
+          parsed client-side, and rendered as read-only event rows in
+          the weekly tasks list. */}
+      {isWeekly && onIcsUrl && (
+        <div style={{
+          borderTop: '0.5px solid rgba(11,11,14,0.06)',
+          padding: '10px 12px 12px',
+          background: 'rgba(11,11,14,0.02)',
+        }}>
+          <div style={{
+            fontFamily: tf.mono, fontSize: 9.5, letterSpacing: '0.14em',
+            textTransform: 'uppercase', color: 'rgba(11,11,14,0.5)',
+            marginBottom: 6,
+          }}>
+            External calendar (Outlook ICS)
+          </div>
+          <input
+            value={icsUrl}
+            onChange={(e) => onIcsUrl(e.target.value)}
+            placeholder="https://outlook.live.com/.../calendar.ics"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            style={{
+              appearance: 'none', boxSizing: 'border-box', width: '100%',
+              border: '0.5px solid rgba(11,11,14,0.18)',
+              background: '#fff', borderRadius: 8,
+              padding: '8px 10px', outline: 'none',
+              fontFamily: tf.mono, fontSize: 11.5,
+              color: '#0B0B0E',
+            }}
+          />
+          <div style={{
+            marginTop: 6, fontFamily: tf.mono, fontSize: 9,
+            letterSpacing: '0.08em', color: 'rgba(11,11,14,0.45)',
+            lineHeight: 1.4,
+          }}>
+            Outlook → Calendar → Share → Publish to web → ICS link.
+            Events appear read-only in the weekly Tasks list.
           </div>
         </div>
       )}

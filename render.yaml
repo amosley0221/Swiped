@@ -37,6 +37,10 @@ services:
       - path: /sync.js
         name: Cache-Control
         value: no-cache, no-store, must-revalidate
+      # ICS import (Outlook calendar feed parsing) — same reasoning.
+      - path: /ics.js
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
     routes:
       - type: rewrite
         source: /canvas

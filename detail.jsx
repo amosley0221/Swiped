@@ -15,6 +15,7 @@ function DetailView({
   sections, updateSection,
   homeData, setHomeData,
   budgetData, setBudgetData,
+  icsEvents, icsLinks,
   scale = 1,
 }) {
   // Scale a handful of the most-visible chrome elements in the detail view
@@ -327,6 +328,8 @@ function DetailView({
             onRemove={removeTask}
             onNoteChange={setNote}
             accent={accent}
+            events={(icsEvents && icsEvents[section.id] && icsEvents[section.id].events) || []}
+            icsError={(icsEvents && icsEvents[section.id] && icsEvents[section.id].error) || null}
           />
         ) : (
           <>
@@ -414,6 +417,66 @@ function formatRelativeWhen(when) {
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
   if (diff < 7 * 86_400_000) return new Date(when).toLocaleDateString('en-US', { weekday: 'short' });
   return new Date(when).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Read-only event row sourced from an ICS feed. Renders inline in the same
+// list as user tasks so the "Tasks · N open" count covers both. No
+// checkbox / delete — events live in the source calendar, edit there.
+function EventRow({ event }) {
+  const start = new Date(event.start);
+  const end = event.end ? new Date(event.end) : null;
+  const dow = start.toLocaleDateString('en-US', { weekday: 'short' });
+  const startTime = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const endTime = end ? end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null;
+  const isAllDay = start.getHours() === 0 && start.getMinutes() === 0
+    && end && (end - start) >= 86_300_000; // ~24h
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: 12,
+      padding: '11px 0', borderBottom: '0.5px solid rgba(255,255,255,0.08)',
+      fontFamily: 'Geist, ui-sans-serif, system-ui', fontSize: 14,
+      color: FG_PINK,
+    }}>
+      {/* Calendar icon stands in for the checkbox to mark this as a
+          read-only Outlook event rather than a checkable task. */}
+      <div style={{
+        flexShrink: 0, width: 18, height: 18, borderRadius: 5,
+        border: '1.5px solid rgba(255,255,255,0.2)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'rgba(250,128,114,0.55)', marginTop: 2,
+      }} title="From Outlook (read-only)">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="5" width="18" height="16" rx="2" />
+          <path d="M3 9h18 M8 3v4 M16 3v4" />
+        </svg>
+      </div>
+      <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{
+            fontFamily: 'Geist Mono, ui-monospace, monospace',
+            fontSize: 10.5, letterSpacing: '0.06em',
+            color: 'rgba(250,128,114,0.55)',
+            fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap',
+          }}>
+            {dow} · {isAllDay ? 'All day' : (endTime ? `${startTime}–${endTime}` : startTime)}
+          </span>
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {event.summary}
+          </span>
+        </span>
+        {event.location && (
+          <span style={{
+            fontSize: 11.5, color: 'rgba(250,128,114,0.5)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            @ {event.location}
+          </span>
+        )}
+      </span>
+    </div>
+  );
 }
 
 function LogRow({ entry }) {
@@ -948,6 +1011,8 @@ function WeeklyView({
   tasks, log, note,
   onToggle, onRemove, onNoteChange,
   accent,
+  events = [],   // read-only ICS events for the active week, already filtered
+  icsError = null,
 }) {
   const weekDate = parseWeekKey(activeKey);
   const [calendarOpen, setCalendarOpen] = React.useState(false);
@@ -1076,9 +1141,32 @@ function WeeklyView({
           opacity: 1 - Math.min(0.35, Math.abs(dragX) / 800),
           willChange: 'transform',
         }}>
-          <SectionTitle>Tasks · {tasks.filter((t) => !t.done).length} open</SectionTitle>
+          {(() => {
+            const openTasks = tasks.filter((t) => !t.done).length;
+            const totalOpen = openTasks + (events ? events.length : 0);
+            return <SectionTitle>Tasks · {totalOpen} open</SectionTitle>;
+          })()}
+          {icsError && (
+            <div style={{
+              fontFamily: 'Geist Mono, ui-monospace, monospace',
+              fontSize: 11, letterSpacing: '0.04em',
+              color: '#A03030', lineHeight: 1.4,
+              background: 'rgba(160,48,48,0.08)',
+              border: '0.5px solid rgba(160,48,48,0.25)',
+              borderRadius: 8, padding: '8px 10px',
+              marginBottom: 10,
+            }}>
+              Calendar fetch failed: {icsError}
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 24 }}>
-            {tasks.length === 0 && (
+            {/* Read-only Outlook / ICS events first, sorted chronologically.
+                They count toward "open" but can't be checked off or deleted
+                here — that lives in the source calendar. */}
+            {events && events.map((e) => (
+              <EventRow key={e.uid} event={e} />
+            ))}
+            {tasks.length === 0 && (!events || events.length === 0) && (
               <div style={{
                 color: 'rgba(250,128,114,0.4)', fontSize: 13,
                 padding: '12px 0',

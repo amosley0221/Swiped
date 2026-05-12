@@ -8,6 +8,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "liquid": "paint",
   "typeface": "modern",
   "userName": "",
+  "icsLinks": {},
   "sections": [
     {"id":"work","name":"Work","iconKey":"briefcase","contentKey":"work"},
     {"id":"budget","name":"Budget","iconKey":"dollar","contentKey":"budget"},
@@ -205,6 +206,11 @@ function App() {
     return { school: weekKey(defaultDate) };
   });
 
+  // ICS events cache: { [sectionId]: { events, fetchedAt, error } }. Not
+  // persisted — re-fetched on demand from the URL stored in tweaks.icsLinks
+  // for the section currently being viewed, scoped to its active week.
+  const [icsEvents, setIcsEvents] = React.useState({});
+
   // Migration from the old school-only weekly keys to the per-section
   // structure. Drops hardcoded log seed entries (those without a `when`
   // timestamp) so the Recent feed reflects real events instead of stub data.
@@ -278,6 +284,41 @@ function App() {
       }
     }
   };
+
+  // Fetch ICS events for the currently-active weekly section whenever the
+  // section, its configured ICS URL, or the active week changes. Cached
+  // 15min by ics.js so navigation doesn't hammer the proxy.
+  const safeIdxForIcs = Math.max(0, Math.min(sections.length - 1, Math.round(targetIdx)));
+  const activeSectionForIcs = sections[safeIdxForIcs];
+  const activeSectionContentKey = activeSectionForIcs?.contentKey || activeSectionForIcs?.id;
+  const activeSectionId = activeSectionForIcs?.id;
+  const isActiveWeekly = activeSectionContentKey === 'work' || activeSectionContentKey === 'school';
+  const activeIcsUrl = (t.icsLinks && t.icsLinks[activeSectionId]) || '';
+  const activeWeekKeyForIcs = (weeklyActiveKey && weeklyActiveKey[activeSectionId]) || weekKey(new Date());
+
+  React.useEffect(() => {
+    if (!isActiveWeekly || !activeIcsUrl || !window.SwipedICS) return;
+    let cancelled = false;
+    const rangeStart = parseWeekKey(activeWeekKeyForIcs);
+    const rangeEnd = new Date(rangeStart);
+    rangeEnd.setDate(rangeEnd.getDate() + 7);
+    window.SwipedICS.getEvents(activeIcsUrl, rangeStart, rangeEnd)
+      .then((events) => {
+        if (cancelled) return;
+        setIcsEvents((prev) => ({
+          ...prev,
+          [activeSectionId]: { events, fetchedAt: Date.now(), error: null },
+        }));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setIcsEvents((prev) => ({
+          ...prev,
+          [activeSectionId]: { events: [], fetchedAt: Date.now(), error: err.message || String(err) },
+        }));
+      });
+    return () => { cancelled = true; };
+  }, [isActiveWeekly, activeIcsUrl, activeSectionId, activeWeekKeyForIcs]);
 
   // Wipe every persisted section field back to the seed defaults — school
   // (semesters / classes / weekly tasks / notes), people (contacts), and
@@ -760,6 +801,8 @@ function App() {
               setHomeData={setHomeData}
               budgetData={budgetData}
               setBudgetData={setBudgetData}
+              icsEvents={icsEvents}
+              icsLinks={t.icsLinks || {}}
               scale={stageScale}
             />
           </div>
@@ -822,6 +865,12 @@ function App() {
         onResetSchoolData={resetSchoolData}
         userName={t.userName}
         onUserName={(v) => setTweak('userName', v)}
+        icsLinks={t.icsLinks || {}}
+        onIcsUrl={(sectionId, url) => {
+          const next = { ...(t.icsLinks || {}) };
+          if (url) next[sectionId] = url; else delete next[sectionId];
+          setTweak('icsLinks', next);
+        }}
       />
     </div>
   );
