@@ -311,29 +311,38 @@ function App() {
   const activeIcsUrl = (t.icsLinks && t.icsLinks[activeSectionId]) || '';
   const activeWeekKeyForIcs = (weeklyActiveKey && weeklyActiveKey[activeSectionId]) || weekKey(new Date());
 
+  // Bump to force-refetch the ICS feed (bypasses the 15-min cache and
+  // wipes the cache entry first). Surfaced as a Refresh button in the
+  // weekly view header so users can pull fresh after publishing changes.
+  const [icsRefreshTick, setIcsRefreshTick] = React.useState(0);
+
   React.useEffect(() => {
     if (!isActiveWeekly || !activeIcsUrl || !window.SwipedICS) return;
     let cancelled = false;
     const rangeStart = parseWeekKey(activeWeekKeyForIcs);
     const rangeEnd = new Date(rangeStart);
     rangeEnd.setDate(rangeEnd.getDate() + 7);
-    window.SwipedICS.getEvents(activeIcsUrl, rangeStart, rangeEnd)
-      .then((events) => {
+    const force = icsRefreshTick > 0;
+    window.SwipedICS.getEvents(activeIcsUrl, rangeStart, rangeEnd, { force })
+      .then((result) => {
         if (cancelled) return;
+        // result is { events, totalParsed }; old shape was a bare array.
+        const events = Array.isArray(result) ? result : (result.events || []);
+        const totalParsed = Array.isArray(result) ? events.length : (result.totalParsed || 0);
         setIcsEvents((prev) => ({
           ...prev,
-          [activeSectionId]: { events, fetchedAt: Date.now(), error: null },
+          [activeSectionId]: { events, totalParsed, fetchedAt: Date.now(), error: null },
         }));
       })
       .catch((err) => {
         if (cancelled) return;
         setIcsEvents((prev) => ({
           ...prev,
-          [activeSectionId]: { events: [], fetchedAt: Date.now(), error: err.message || String(err) },
+          [activeSectionId]: { events: [], totalParsed: 0, fetchedAt: Date.now(), error: err.message || String(err) },
         }));
       });
     return () => { cancelled = true; };
-  }, [isActiveWeekly, activeIcsUrl, activeSectionId, activeWeekKeyForIcs]);
+  }, [isActiveWeekly, activeIcsUrl, activeSectionId, activeWeekKeyForIcs, icsRefreshTick]);
 
   // Wipe every persisted section field back to the seed defaults — school
   // (semesters / classes / weekly tasks / notes), people (contacts), and
@@ -1100,6 +1109,7 @@ function App() {
               setMealsData={setMealsData}
               icsEvents={icsEvents}
               icsLinks={t.icsLinks || {}}
+              onIcsRefresh={() => setIcsRefreshTick((n) => n + 1)}
               scale={stageScale}
             />
           </div>

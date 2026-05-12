@@ -19,7 +19,7 @@ function DetailView({
   travelData, setTravelData,
   workoutsData, setWorkoutsData,
   mealsData, setMealsData,
-  icsEvents, icsLinks,
+  icsEvents, icsLinks, onIcsRefresh,
   scale = 1,
 }) {
   // Scale a handful of the most-visible chrome elements in the detail view
@@ -366,6 +366,9 @@ function DetailView({
             accent={accent}
             events={(icsEvents && icsEvents[section.id] && icsEvents[section.id].events) || []}
             icsError={(icsEvents && icsEvents[section.id] && icsEvents[section.id].error) || null}
+            icsTotalParsed={(icsEvents && icsEvents[section.id] && icsEvents[section.id].totalParsed) || 0}
+            icsConfigured={!!(icsLinks && icsLinks[section.id])}
+            onIcsRefresh={onIcsRefresh}
           />
         ) : (
           <>
@@ -1049,6 +1052,9 @@ function WeeklyView({
   accent,
   events = [],   // read-only ICS events for the active week, already filtered
   icsError = null,
+  icsTotalParsed = 0,
+  icsConfigured = false,
+  onIcsRefresh,
 }) {
   const weekDate = parseWeekKey(activeKey);
   const [calendarOpen, setCalendarOpen] = React.useState(false);
@@ -1180,8 +1186,40 @@ function WeeklyView({
           {(() => {
             const openTasks = tasks.filter((t) => !t.done).length;
             const totalOpen = openTasks + (events ? events.length : 0);
-            return <SectionTitle>Tasks · {totalOpen} open</SectionTitle>;
+            return (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <SectionTitle>Tasks · {totalOpen} open</SectionTitle>
+                {icsConfigured && onIcsRefresh && (
+                  <button
+                    onClick={onIcsRefresh}
+                    style={{
+                      appearance: 'none', border: 0, background: 'transparent',
+                      color: accent, cursor: 'pointer', padding: 0,
+                      fontFamily: 'Geist Mono, ui-monospace, monospace',
+                      fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+                      fontWeight: 600,
+                    }}
+                  >Refresh calendar</button>
+                )}
+              </div>
+            );
           })()}
+          {/* Diagnostic — only when the feed is configured but nothing showed
+              up in this week. Tells the user whether the feed was empty, or
+              had events outside this week (e.g., calendar's all-events lives
+              in a different range). */}
+          {icsConfigured && !icsError && events.length === 0 && (
+            <div style={{
+              fontFamily: 'Geist Mono, ui-monospace, monospace',
+              fontSize: 10, letterSpacing: '0.06em',
+              color: 'rgba(250,128,114,0.55)',
+              padding: '6px 0 10px',
+            }}>
+              {icsTotalParsed === 0
+                ? 'Calendar loaded · 0 events in feed (is the URL the .ics link?)'
+                : `Calendar loaded · ${icsTotalParsed} event${icsTotalParsed === 1 ? '' : 's'} in feed, none this week`}
+            </div>
+          )}
           {icsError && (
             <div style={{
               fontFamily: 'Geist Mono, ui-monospace, monospace',

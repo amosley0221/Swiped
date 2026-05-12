@@ -222,8 +222,11 @@
   // Cached fetch: 15-minute TTL so opening the section doesn't hit the
   // network on every navigation. localStorage keyed by the source URL.
   async function getEvents(url, rangeStart, rangeEnd, { force = false } = {}) {
-    if (!url) return [];
+    if (!url) return { events: [], totalParsed: 0 };
     const cacheKey = CACHE_PREFIX + url;
+    if (force) {
+      try { localStorage.removeItem(cacheKey); } catch (e) { /* ignore */ }
+    }
     let text = null;
     if (!force) {
       try {
@@ -239,7 +242,9 @@
         localStorage.setItem(cacheKey, JSON.stringify({ text, fetchedAt: Date.now() }));
       } catch (e) { /* storage may be full — fine, we just refetch */ }
     }
-    return getEventsInRange(text, rangeStart, rangeEnd);
+    const allEvents = parseICS(text);
+    const inRange = getEventsInRange(text, rangeStart, rangeEnd);
+    return { events: inRange, totalParsed: allEvents.length };
   }
 
   window.SwipedICS = {
