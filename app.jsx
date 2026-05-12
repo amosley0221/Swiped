@@ -609,26 +609,82 @@ function App() {
     }
     if (contentKey === 'home') {
       const firstName = (t.userName || '').trim().split(/\s+/)[0] || '';
-      const sectionCount = sections.length;
+      // Roll the user's other sections into a single "what needs attention"
+      // list. Sections with nothing pending stay hidden so this is a true
+      // priority feed instead of a per-section dashboard.
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const endOfTomorrow = new Date(today); endOfTomorrow.setDate(today.getDate() + 2);
+      const sevenOut = new Date(today); sevenOut.setDate(today.getDate() + 7);
+      const threeOut = new Date(today); threeOut.setDate(today.getDate() + 3);
+      const homeExtras = [];
+      sections.forEach((sec) => {
+        const ck = sec.contentKey || sec.id;
+        if (ck === 'home') return;
+        if (ck === 'work') {
+          const wk = (weeklyActiveKey && weeklyActiveKey[sec.id]) || weekKey(new Date());
+          const weekStore = (weeklyData[sec.id] && weeklyData[sec.id][wk]) || { tasks: [] };
+          const openTasks = (weekStore.tasks || []).filter((tt) => !tt.done).length;
+          const events = icsEvents[sec.id]?.events || [];
+          // Today + tomorrow window for meetings (calendar events tend to be
+          // time-sensitive; tasks aren't dated so they roll up at the week).
+          const dueEvents = events.filter((e) => {
+            const d = new Date(e.start);
+            return d >= today && d < endOfTomorrow;
+          }).length;
+          const parts = [];
+          if (dueEvents > 0) parts.push(`${dueEvents} meeting${dueEvents === 1 ? '' : 's'}`);
+          if (openTasks > 0) parts.push(`${openTasks} task${openTasks === 1 ? '' : 's'}`);
+          if (parts.length) {
+            homeExtras.push({ name: sec.name, label: 'Today & tomorrow', value: parts.join(' · ') });
+          }
+        } else if (ck === 'school') {
+          const wk = (weeklyActiveKey && weeklyActiveKey[sec.id]) || weekKey(new Date());
+          const weekStore = (weeklyData[sec.id] && weeklyData[sec.id][wk]) || { tasks: [] };
+          const openTasks = (weekStore.tasks || []).filter((tt) => !tt.done).length;
+          const events = icsEvents[sec.id]?.events || [];
+          const total = openTasks + events.length;
+          if (total > 0) {
+            homeExtras.push({ name: sec.name, label: 'Next 7 days', value: `${total} due` });
+          }
+        } else if (ck === 'budget') {
+          const bd = budgetData || {};
+          let count = 0;
+          (bd.bills || []).forEach((b) => {
+            const d = nextRenewal({ renewalDate: b.dueDate, frequency: b.frequency || 'monthly' });
+            if (d && d >= today && d <= threeOut) count++;
+          });
+          (bd.subscriptions || []).forEach((sub) => {
+            const d = nextRenewal(sub);
+            if (d && d >= today && d <= threeOut) count++;
+          });
+          (bd.accounts || []).forEach((a) => {
+            if (a.kind !== 'credit') return;
+            const d = nextRenewal({ renewalDate: a.dueDate, frequency: 'monthly' });
+            if (d && d >= today && d <= threeOut) count++;
+          });
+          if (count > 0) {
+            homeExtras.push({ name: sec.name, label: 'Next 3 days', value: `${count} due` });
+          }
+        } else if (ck === 'person') {
+          const pd = peopleData[sec.id] || {};
+          const open = (pd.reminders || []).filter((r) => !r.done).length;
+          if (open > 0) {
+            homeExtras.push({ name: sec.name, label: 'Reminders', value: `${open} open` });
+          }
+        }
+      });
       return {
         ...baseContent,
         headline: firstName
           ? (<><span>Welcome </span><span style={{ color: t.accent }}>{firstName}</span></>)
           : 'Welcome',
+        // Empty state: keep a single short line so the panel isn't bare.
+        // Otherwise the headline sits directly above the extras list.
         brief: firstName
-          ? 'Swipe the dial to explore your sections.'
+          ? (homeExtras.length === 0 ? 'All caught up.' : null)
           : 'Swipe up to set your name and personalize Swiped.',
-        stats: [
-          { label: 'Sections', value: String(sectionCount) },
-          {
-            label: 'Today',
-            value: new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-          },
-          {
-            label: 'Time',
-            value: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-          },
-        ],
+        stats: [],
+        extras: homeExtras,
       };
     }
     if (contentKey === 'person') {
