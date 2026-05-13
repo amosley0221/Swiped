@@ -19,13 +19,19 @@
 (function () {
   if (typeof window === 'undefined') return;
 
-  // CORS proxies tried in order — Outlook and Google calendar URLs don't
-  // send CORS headers, so the PWA can't fetch them directly. Free proxies
-  // periodically rate-limit, 503, or get blocked by Microsoft entirely;
-  // falling back through a long chain keeps the calendar working when an
-  // individual provider hiccups. Direct fetch is tried first in case the
-  // calendar host happens to send permissive CORS headers (Google does).
+  // Supabase Edge Function — our own ICS proxy. Hosted on Supabase's
+  // edge network, so it isn't on Microsoft's free-proxy block list. This
+  // is the primary route; the free-proxy chain below is kept as a fallback
+  // in case the function is down or quota-exhausted. URL mirrors the one
+  // hardcoded in sync.js — keep them in sync if the Supabase project
+  // ever moves.
+  const SWIPED_ICS_PROXY = 'https://vzvhokeusirmfdphibny.supabase.co/functions/v1/ics-proxy?url=';
+
+  // CORS proxies tried in order. Swiped's own Supabase Edge Function
+  // is first since it's the only one we control; if it's down for any
+  // reason the public proxy chain takes over until it recovers.
   const CORS_PROXIES = [
+    (u) => SWIPED_ICS_PROXY + encodeURIComponent(u),
     (u) => u, // direct — works for Google Calendar ICS links
     (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
     (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
@@ -72,7 +78,7 @@
     for (let i = 0; i < CORS_PROXIES.length; i++) {
       const target = CORS_PROXIES[i](url);
       if (!target) continue;
-      const label = ['direct', 'corsproxy.io', 'allorigins', 'codetabs', 'thingproxy', 'corsproxy.org', 'custom'][i] || `#${i}`;
+      const label = ['swiped', 'direct', 'corsproxy.io', 'allorigins', 'codetabs', 'thingproxy', 'corsproxy.org', 'custom'][i] || `#${i}`;
       try {
         const res = await fetch(target);
         if (!res.ok) { errors.push(`${label}:HTTP ${res.status}`); continue; }

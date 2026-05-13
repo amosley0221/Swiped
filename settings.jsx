@@ -112,6 +112,10 @@ function SettingsSheet({
               chain is rate-limited or blocked for the user's calendar host. */}
           <CustomProxySection tf={tf} accent={accent} />
 
+          {/* Privacy + data handling. Linked from the inline notice users
+              see when they paste an ICS URL. */}
+          <PrivacySection tf={tf} accent={accent} />
+
           {/* user name — used for Home's "Welcome <first name>" headline */}
           {onUserName && (
             <div style={{ marginBottom: 22 }}>
@@ -445,6 +449,36 @@ function SectionRow({ section, accent, tf, onName, onContent, onIcon, onRemove,
             Outlook → Calendar → Share → Publish to web → ICS link.
             Events appear read-only in the weekly Tasks list.
           </div>
+          {/* Privacy notice — shown whenever the user has an ICS URL
+              configured, since the URL contains a token that grants
+              read access to that calendar. Links to the full privacy
+              section in Settings. */}
+          {icsUrl && (
+            <div style={{
+              marginTop: 8, fontFamily: tf.family, fontSize: 11.5,
+              lineHeight: 1.4, color: 'rgba(11,11,14,0.55)',
+              background: 'rgba(232,197,71,0.12)',
+              border: '0.5px solid rgba(232,197,71,0.3)',
+              borderRadius: 8, padding: '8px 10px',
+            }}>
+              The published URL acts as a read token for that calendar.
+              Swiped fetches it through a small Supabase proxy
+              we host (so Microsoft / Google don't block the request).
+              The proxy passes the URL straight through without storing
+              or logging it.{' '}
+              <a
+                href="#swiped-privacy-ics"
+                onClick={(e) => {
+                  e.preventDefault();
+                  const el = document.getElementById('swiped-privacy-ics');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                style={{ color: '#0B0B0E', textDecoration: 'underline' }}
+              >
+                Read more
+              </a>.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -924,6 +958,76 @@ function CustomProxySection({ tf, accent }) {
           lineHeight: 1.5,
         }}>
           Easiest free option: a Cloudflare Worker (~10 lines of code, free tier covers 100k requests/day). Tried only if every public proxy fails.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Privacy & data — what Swiped stores, where, and how the calendar
+// proxy handles user-supplied URLs. Anchored at id="swiped-privacy-ics"
+// so the inline notice next to the ICS URL field can scroll users here.
+function PrivacySection({ tf, accent }) {
+  const subhead = {
+    fontFamily: tf.mono, fontSize: 9, letterSpacing: '0.14em',
+    textTransform: 'uppercase', color: 'rgba(11,11,14,0.55)',
+    marginTop: 12, marginBottom: 4,
+  };
+  const para = {
+    fontFamily: tf.family, fontSize: 13, lineHeight: 1.45,
+    color: 'rgba(11,11,14,0.7)',
+  };
+  return (
+    <div style={{ marginBottom: 22 }} id="swiped-privacy-ics">
+      <Label tf={tf}>Privacy & data</Label>
+      <div style={{
+        background: '#fff',
+        border: '0.5px solid rgba(11,11,14,0.1)',
+        borderRadius: 14, padding: '14px 16px',
+        display: 'flex', flexDirection: 'column', gap: 4,
+      }}>
+        <div style={subhead}>What Swiped stores</div>
+        <div style={para}>
+          Everything you type into a section — tasks, notes, contacts,
+          budget entries, health logs, etc. — is saved to this device's
+          local storage. If you're signed in (Settings → Cross-device
+          sync), the same data is synced to your row in Swiped's
+          Supabase database so other devices can read it back. No
+          analytics, no third-party trackers.
+        </div>
+
+        <div style={subhead}>Calendar (ICS) URLs</div>
+        <div style={para}>
+          Outlook / Google "publish a calendar" URLs contain a token
+          that grants read access to that calendar. Browsers can't
+          fetch those URLs directly (no CORS headers), so Swiped
+          routes them through a small Supabase Edge Function we host.
+          The function fetches the URL, returns the iCalendar body,
+          and exits — it does not log the URL, the token, or the
+          response. Source is open in the repo (supabase/functions/
+          ics-proxy/index.ts).
+        </div>
+        <div style={para}>
+          If the function is down, Swiped falls back through public
+          CORS proxies (corsproxy.io, allorigins, etc.). Those are
+          operated by third parties; if you'd rather not use them you
+          can leave the field blank or run your own proxy via Settings
+          → Custom CORS proxy.
+        </div>
+
+        <div style={subhead}>Backups</div>
+        <div style={para}>
+          Export creates a JSON snapshot you save locally; nothing
+          leaves your device. Import overwrites your current data
+          from a file you pick. Neither touches the cloud.
+        </div>
+
+        <div style={subhead}>Removing your data</div>
+        <div style={para}>
+          Clear a section via Settings → Reset section data, or
+          uninstall the PWA / clear site data in Safari to wipe
+          local storage. If signed in, contact us to delete the
+          Supabase row.
         </div>
       </div>
     </div>
