@@ -1095,6 +1095,7 @@ function App() {
           scale={stageScale}
           onJump={(i) => setTargetIdx(i)}
           onOpenPicker={() => setPickerOpen(true)}
+          onLiquidStart={onLiquidStart}
         />
       </div>
       {/* small upward arrow chip floating above wheel — touch handle hint */}
@@ -1395,12 +1396,18 @@ function BriefPanel({ section, content, accent, tf, pulseKey, scale = 1 }) {
   );
 }
 
-function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpenPicker }) {
-  // Strip occupies a tall hit area so finger placement is forgiving, and
-  // its zIndex sits above the wheel (z=5) so pointer events reach us
-  // instead of getting intercepted by the dial's drag handler.
+function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpenPicker, onLiquidStart }) {
+  // Strip sits above the wheel (zIndex 10 > wheel's 5) so taps + horizontal
+  // scrubs land here. But the strip's hit area visually overlaps the user's
+  // natural target for "grab the icon and drag up", so we defer commitment:
+  // on pointer-down we just record the start; the first move decides whether
+  // to scrub (mostly-horizontal) or forward to the wheel's liquid drag
+  // (mostly-vertical upward).
   const stripRef = React.useRef(null);
-  const dragging = React.useRef(false);
+  const mode = React.useRef(null); // 'scrub' | 'released' | null
+  const startX = React.useRef(0);
+  const startY = React.useRef(0);
+  const pointerId = React.useRef(null);
   const lastIdx = React.useRef(-1);
 
   const idxAt = (clientX) => {
@@ -1413,17 +1420,48 @@ function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpe
   };
 
   const onPointerDown = (e) => {
-    dragging.current = true;
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
-    const i = idxAt(e.clientX);
-    if (i != null && i !== lastIdx.current) { lastIdx.current = i; onJump && onJump(i); }
+    mode.current = null;
+    startX.current = e.clientX;
+    startY.current = e.clientY;
+    pointerId.current = e.pointerId;
   };
   const onPointerMove = (e) => {
-    if (!dragging.current) return;
-    const i = idxAt(e.clientX);
-    if (i != null && i !== lastIdx.current) { lastIdx.current = i; onJump && onJump(i); }
+    if (!pointerId.current) return;
+    const dx = e.clientX - startX.current;
+    const dy = e.clientY - startY.current;
+    if (mode.current === null) {
+      // Vertical-up dominant gesture? Hand off to the wheel's liquid drag
+      // and back out of scrubbing entirely.
+      if (dy < -8 && Math.abs(dy) > Math.abs(dx) * 1.1) {
+        mode.current = 'released';
+        if (onLiquidStart) onLiquidStart({ startX: startX.current, startY: startY.current, currentY: e.clientY });
+        pointerId.current = null;
+        return;
+      }
+      // Mostly horizontal? Start scrubbing.
+      if (Math.abs(dx) > 4) {
+        mode.current = 'scrub';
+        try { e.currentTarget.setPointerCapture(pointerId.current); } catch (_) {}
+        const i = idxAt(startX.current);
+        if (i != null) { lastIdx.current = i; onJump && onJump(i); }
+      }
+    }
+    if (mode.current === 'scrub') {
+      const i = idxAt(e.clientX);
+      if (i != null && i !== lastIdx.current) { lastIdx.current = i; onJump && onJump(i); }
+    }
   };
-  const stopDrag = () => { dragging.current = false; lastIdx.current = -1; };
+  const onPointerUp = (e) => {
+    // Tap-without-drag → treat as jump to that dot (the original click behavior).
+    if (mode.current === null && pointerId.current != null) {
+      const i = idxAt(e.clientX);
+      if (i != null) onJump && onJump(i);
+    }
+    mode.current = null;
+    pointerId.current = null;
+    lastIdx.current = -1;
+  };
+  const stopDrag = () => { mode.current = null; pointerId.current = null; lastIdx.current = -1; };
 
   return (
     <div style={{
@@ -1435,11 +1473,14 @@ function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpe
         ref={stripRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={stopDrag}
+        onPointerUp={onPointerUp}
         onPointerCancel={stopDrag}
         style={{
           display: 'flex', alignItems: 'center', gap: 6 * scale,
-          padding: `${12 * scale}px ${10 * scale}px`,
+          // Narrower vertical padding so the strip doesn't visually overlap
+          // the wheel's icon area; horizontal padding stays generous so taps
+          // on individual dots are still forgiving.
+          padding: `${6 * scale}px ${10 * scale}px`,
           touchAction: 'none', cursor: 'pointer',
         }}
       >
