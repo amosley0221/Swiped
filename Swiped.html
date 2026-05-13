@@ -46,13 +46,13 @@
   <!-- sync.js auto-initializes Supabase, attaches auth listeners, and
        bridges the swiped-state-set / swiped-state-external pub/sub to a
        per-user row in the user_data table. -->
-  <script src="sync.js?v=20260513n"></script>
+  <script src="sync.js?v=20260513o"></script>
   <!-- ICS calendar import — fetches Outlook (or any RFC-5545 ICS feed)
        through a CORS proxy and expands recurrence into per-week
        occurrences. window.SwipedICS.getEvents(url, start, end).
        Renamed from ics.js → ics-v2.js to bypass iOS PWAs that were
        holding onto a cached older copy of the script. -->
-  <script src="ics-v2.js?v=20260513n"></script>
+  <script src="ics-v2.js?v=20260513o"></script>
 
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
@@ -60,11 +60,11 @@
 
   <script type="text/babel" src="tweaks-panel.jsx"></script>
   <script type="text/babel" src="sections.jsx"></script>
-  <script type="text/babel" src="wheel-v2.jsx?v=20260513n"></script>
-  <script type="text/babel" src="liquid.jsx?v=20260513n"></script>
-  <script type="text/babel" src="detail.jsx?v=20260513n"></script>
-  <script type="text/babel" src="settings.jsx?v=20260513n"></script>
-  <script type="text/babel" src="app.jsx?v=20260513n"></script>
+  <script type="text/babel" src="wheel-v2.jsx?v=20260513o"></script>
+  <script type="text/babel" src="liquid.jsx?v=20260513o"></script>
+  <script type="text/babel" src="detail.jsx?v=20260513o"></script>
+  <script type="text/babel" src="settings.jsx?v=20260513o"></script>
+  <script type="text/babel" src="app.jsx?v=20260513o"></script>
   <script type="text/babel">
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);

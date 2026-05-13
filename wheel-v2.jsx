@@ -272,7 +272,7 @@ function Wheel({
           x2={peakX} y2={peakY - 8}
           stroke={accent} strokeWidth="2" strokeLinecap="round"
         />
-        <circle cx={cx} cy={dialCy - radius - 16} r="2.5" fill={accent} />
+        <circle cx={peakX} cy={peakY - 22} r="2.5" fill={accent} />
       </svg>
 
       {/* section icons — absolutely positioned divs in viewport-y space
