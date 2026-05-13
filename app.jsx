@@ -412,20 +412,16 @@ function App() {
 
   const [pulseKey, setPulseKey] = React.useState(0);
 
-  // How far the wheel must rise to be considered fully "off" the screen.
-  // Wheel container starts at bottom: 0 with height = protrusion + 80; once
-  // we translate by that amount its top has cleared the visible area.
-  const wheelTotalHeight = protrusion + 80;
-  // The wheel only needs to travel up by `protrusion + a little extra` to
-  // fully expose the DetailView, but giving the user a bit more travel
-  // makes the gesture feel deliberate. progress = lift / liftMax.
-  const liftMax = Math.max(H * 0.6, wheelTotalHeight + 100);
-
   // Liquid drag: pinch the dial's icon and lift it; the WHEEL ITSELF rises
   // with the finger 1:1, with a soft squish past the threshold. The
   // DetailView sits underneath the whole time and becomes visible as the
-  // wheel slides up away from the bottom.
+  // wheel slides up away from the bottom. Note: liftMax is computed inside
+  // the handler so it can read `protrusion`, which is declared further
+  // down the component body; if we computed it up here, `protrusion` would
+  // still be undefined (TDZ → NaN) and the wheel would never lift.
   const onLiquidStart = ({ startX, startY }) => {
+    const wheelTotalHeight = (175 * stageScale) + 80; // mirrors `protrusion + 80`
+    const liftMax = Math.max(H * 0.6, wheelTotalHeight + 100);
     setLiquid({ active: true, progress: 0, finger: { x: startX, y: startY }, lift: 0 });
     const startTime = performance.now();
     const move = (ev) => {
@@ -465,6 +461,9 @@ function App() {
   // Tween wheel lift toward a target progress (0..1). Opening eases out with
   // a slight elastic curve so the wheel feels rubbery; closing eases in.
   const animateLift = (from, targetP, duration, done) => {
+    // Recompute liftMax here for the same reason as onLiquidStart — using
+    // the outer-scope `protrusion` directly is TDZ-NaN at this point.
+    const liftMax = Math.max(H * 0.6, (175 * stageScale) + 80 + 100);
     const startT = performance.now();
     const fromP = from.progress;
     const fromLift = from.lift || 0;
@@ -1124,22 +1123,6 @@ function App() {
         tf={tf}
         scale={stageScale}
       />
-
-      {/* DEBUG — shows live lift value so we can tell if the gesture is
-          updating state but the wheel transform isn't applying. Remove
-          once the lift bug is identified. */}
-      {liquid.active && (
-        <div style={{
-          position: 'fixed', top: 80, right: 12,
-          background: '#FA8072', color: '#0B0B0E',
-          fontFamily: 'Geist Mono, ui-monospace, monospace',
-          fontSize: 11, fontWeight: 700,
-          padding: '6px 10px', borderRadius: 6,
-          pointerEvents: 'none', zIndex: 100,
-        }}>
-          LIFT {Math.round(liquid.lift || 0)} / {Math.round(liquid.progress * 100)}%
-        </div>
-      )}
 
       {/* (No separate dark sheet — the wheel itself rises during the drag
           and reveals the DetailView sitting behind it.) */}
