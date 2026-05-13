@@ -1125,6 +1125,22 @@ function App() {
         scale={stageScale}
       />
 
+      {/* DEBUG — shows live lift value so we can tell if the gesture is
+          updating state but the wheel transform isn't applying. Remove
+          once the lift bug is identified. */}
+      {liquid.active && (
+        <div style={{
+          position: 'fixed', top: 80, right: 12,
+          background: '#FA8072', color: '#0B0B0E',
+          fontFamily: 'Geist Mono, ui-monospace, monospace',
+          fontSize: 11, fontWeight: 700,
+          padding: '6px 10px', borderRadius: 6,
+          pointerEvents: 'none', zIndex: 100,
+        }}>
+          LIFT {Math.round(liquid.lift || 0)} / {Math.round(liquid.progress * 100)}%
+        </div>
+      )}
+
       {/* (No separate dark sheet — the wheel itself rises during the drag
           and reveals the DetailView sitting behind it.) */}
 
