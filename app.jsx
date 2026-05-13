@@ -1400,15 +1400,12 @@ function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpe
   // Strip sits above the wheel (zIndex 10 > wheel's 5) so taps + horizontal
   // scrubs land here. But the strip's hit area visually overlaps the user's
   // natural target for "grab the icon and drag up", so we defer commitment:
-  // on pointer-down we just record the start; the first move decides whether
-  // to scrub (mostly-horizontal) or forward to the wheel's liquid drag
-  // (mostly-vertical upward).
+  // on pointer-down we record the start and attach window-level move/up
+  // listeners; the first move decides whether to scrub (mostly-horizontal)
+  // or forward the gesture to the wheel's liquid drag (mostly-vertical
+  // upward). Window-level listeners ensure we keep getting moves even when
+  // the finger drifts off the strip itself.
   const stripRef = React.useRef(null);
-  const mode = React.useRef(null); // 'scrub' | 'released' | null
-  const startX = React.useRef(0);
-  const startY = React.useRef(0);
-  const pointerId = React.useRef(null);
-  const lastIdx = React.useRef(-1);
 
   const idxAt = (clientX) => {
     const el = stripRef.current;
@@ -1420,48 +1417,46 @@ function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpe
   };
 
   const onPointerDown = (e) => {
-    mode.current = null;
-    startX.current = e.clientX;
-    startY.current = e.clientY;
-    pointerId.current = e.pointerId;
-  };
-  const onPointerMove = (e) => {
-    if (!pointerId.current) return;
-    const dx = e.clientX - startX.current;
-    const dy = e.clientY - startY.current;
-    if (mode.current === null) {
-      // Vertical-up dominant gesture? Hand off to the wheel's liquid drag
-      // and back out of scrubbing entirely.
-      if (dy < -8 && Math.abs(dy) > Math.abs(dx) * 1.1) {
-        mode.current = 'released';
-        if (onLiquidStart) onLiquidStart({ startX: startX.current, startY: startY.current, currentY: e.clientY });
-        pointerId.current = null;
-        return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let mode = null; // 'scrub' | 'released' | null
+    let lastIdx = -1;
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (mode === null) {
+        // Vertical-up dominant gesture? Hand off to the wheel's liquid drag.
+        if (dy < -8 && Math.abs(dy) > Math.abs(dx) * 1.1) {
+          mode = 'released';
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', up);
+          if (onLiquidStart) onLiquidStart({ startX, startY, currentY: ev.clientY });
+          return;
+        }
+        // Mostly horizontal? Start scrubbing.
+        if (Math.abs(dx) > 4) {
+          mode = 'scrub';
+          const i = idxAt(startX);
+          if (i != null) { lastIdx = i; onJump && onJump(i); }
+        }
       }
-      // Mostly horizontal? Start scrubbing.
-      if (Math.abs(dx) > 4) {
-        mode.current = 'scrub';
-        try { e.currentTarget.setPointerCapture(pointerId.current); } catch (_) {}
-        const i = idxAt(startX.current);
-        if (i != null) { lastIdx.current = i; onJump && onJump(i); }
+      if (mode === 'scrub') {
+        const i = idxAt(ev.clientX);
+        if (i != null && i !== lastIdx) { lastIdx = i; onJump && onJump(i); }
       }
-    }
-    if (mode.current === 'scrub') {
-      const i = idxAt(e.clientX);
-      if (i != null && i !== lastIdx.current) { lastIdx.current = i; onJump && onJump(i); }
-    }
+    };
+    const up = (ev) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      // Tap-without-drag → treat as jump to that dot.
+      if (mode === null) {
+        const i = idxAt(ev.clientX);
+        if (i != null) onJump && onJump(i);
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   };
-  const onPointerUp = (e) => {
-    // Tap-without-drag → treat as jump to that dot (the original click behavior).
-    if (mode.current === null && pointerId.current != null) {
-      const i = idxAt(e.clientX);
-      if (i != null) onJump && onJump(i);
-    }
-    mode.current = null;
-    pointerId.current = null;
-    lastIdx.current = -1;
-  };
-  const stopDrag = () => { mode.current = null; pointerId.current = null; lastIdx.current = -1; };
 
   return (
     <div style={{
@@ -1472,9 +1467,6 @@ function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpe
       <div
         ref={stripRef}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={stopDrag}
         style={{
           display: 'flex', alignItems: 'center', gap: 6 * scale,
           // Narrower vertical padding so the strip doesn't visually overlap
