@@ -577,6 +577,65 @@ function SectionTitle({ children }) {
   );
 }
 
+// Tap-to-collapse wrapper. The header looks like a SectionTitle with a
+// small chevron that rotates when expanded; the contents reveal below.
+// Persists per-key in localStorage so users don't have to re-collapse
+// sections every time they reopen the detail sheet.
+function CollapsibleSection({ id, title, right, accent, defaultOpen = true, children }) {
+  const storageKey = `swiped.collapse.${id}`;
+  const [open, setOpen] = React.useState(() => {
+    try {
+      const v = localStorage.getItem(storageKey);
+      if (v === '0') return false;
+      if (v === '1') return true;
+    } catch (e) { /* ignore */ }
+    return defaultOpen;
+  });
+  const toggle = () => {
+    setOpen((v) => {
+      const next = !v;
+      try { localStorage.setItem(storageKey, next ? '1' : '0'); } catch (e) {}
+      return next;
+    });
+  };
+  return (
+    <div>
+      <button
+        onClick={toggle}
+        style={{
+          appearance: 'none', background: 'transparent', border: 0,
+          padding: 0, margin: 0, width: '100%', cursor: 'pointer',
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+          gap: 12, marginBottom: open ? 10 : 14, marginTop: 2,
+          color: 'rgba(250,128,114,0.45)',
+        }}
+        aria-expanded={open}
+      >
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          fontFamily: 'Geist Mono, ui-monospace, monospace',
+          fontSize: 13, letterSpacing: '0.16em', textTransform: 'uppercase',
+          color: 'rgba(250,128,114,0.45)',
+        }}>
+          <svg width="10" height="10" viewBox="0 0 10 10"
+            style={{
+              transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
+              transition: 'transform 0.18s ease',
+              opacity: 0.65,
+            }}>
+            <path d="M2 4 L5 7 L8 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {title}
+        </span>
+        {right && (
+          <span style={{ flexShrink: 0 }}>{right}</span>
+        )}
+      </button>
+      {open && <div>{children}</div>}
+    </div>
+  );
+}
+
 function SchoolClasses({ semesters, onChange, activeId, onSelect, accent }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [newName, setNewName] = React.useState('');
@@ -2126,31 +2185,36 @@ function BudgetDetails({ data, setData, accent }) {
       {/* Year overview — rolls income (net), bills, and the resulting cash
           flow up to a yearly view. Bills are projected as monthly recurring
           for now. Net flips red when bills outpace income. */}
-      <div style={{
-        border: '0.5px solid rgba(255,255,255,0.12)',
-        background: 'rgba(255,255,255,0.03)',
-        borderRadius: 14, padding: '12px 14px',
-      }}>
-        <SectionTitle>Year overview</SectionTitle>
-        {overviewRow('Income · net', yearlyIncomeNet, monthlyIncomeNet, { color: accent })}
-        {overviewRow('Bills', yearlyBills, billsTotal, { divider: true })}
-        {overviewRow('Subscriptions', subsYearly, subsMonthly, { divider: true })}
-        {overviewRow('Net', yearlyNet, monthlyNet, {
-          divider: true,
-          color: monthlyNet >= 0 ? accent : '#FA8072',
-        })}
-      </div>
+      <CollapsibleSection id="budget.year" title="Year overview" accent={accent}>
+        <div style={{
+          border: '0.5px solid rgba(255,255,255,0.12)',
+          background: 'rgba(255,255,255,0.03)',
+          borderRadius: 14, padding: '12px 14px',
+        }}>
+          {overviewRow('Income · net', yearlyIncomeNet, monthlyIncomeNet, { color: accent })}
+          {overviewRow('Bills', yearlyBills, billsTotal, { divider: true })}
+          {overviewRow('Subscriptions', subsYearly, subsMonthly, { divider: true })}
+          {overviewRow('Net', yearlyNet, monthlyNet, {
+            divider: true,
+            color: monthlyNet >= 0 ? accent : '#FA8072',
+          })}
+        </div>
+      </CollapsibleSection>
 
       {/* Accounts — bank / brokerage / wallet, anything that holds money.
           Credit cards live in the same `accounts` list (kind: 'credit') but
           render as cards below with limit + available instead of balance. */}
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <SectionTitle>Accounts · {safe.accounts.length}</SectionTitle>
+      <CollapsibleSection
+        id="budget.accounts"
+        title={`Accounts · ${safe.accounts.length}`}
+        accent={accent}
+        right={(
           <span style={sumStyle}>
             Total&nbsp;<span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(cashTotal)}</span>
           </span>
-        </div>
+        )}
+      >
+      <div>
         {cashAccounts.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 28px', gap: 8 }}>
             <div style={colHeadStyle}>Name</div>
@@ -2333,19 +2397,24 @@ function BudgetDetails({ data, setData, accent }) {
             </button>
           </div>
       </div>
+      </CollapsibleSection>
 
       {/* Income — per-source cards. Pick hourly or salaried, fill in the
           relevant amount + frequency, and we'll normalize everything to a
           monthly net total (using a ~22% average tax rate). */}
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <SectionTitle>Income · net</SectionTitle>
+      <CollapsibleSection
+        id="budget.income"
+        title="Income · net"
+        accent={accent}
+        right={(
           <span style={sumStyle}>
             <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(monthlyIncomeNet)}</span>&nbsp;/ mo
             &nbsp;·&nbsp;
             <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(yearlyIncomeNet)}</span>&nbsp;/ yr
           </span>
-        </div>
+        )}
+      >
+      <div>
         {safe.income.map((i) => {
           const payType = i.payType || 'salaried';
           const gross = monthlyGrossIncome(i);
@@ -2505,18 +2574,23 @@ function BudgetDetails({ data, setData, accent }) {
           + Add income
         </button>
       </div>
+      </CollapsibleSection>
 
       {/* Upcoming bills — sorted by the *next* date after frequency
           advance, so monthly / yearly bills self-update. */}
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <SectionTitle>Upcoming bills</SectionTitle>
+      <CollapsibleSection
+        id="budget.bills"
+        title="Upcoming bills"
+        accent={accent}
+        right={(
           <span style={sumStyle}>
             <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(billsMonthly)}</span>&nbsp;/ mo
             &nbsp;·&nbsp;
             <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(yearlyBills)}</span>&nbsp;/ yr
           </span>
-        </div>
+        )}
+      >
+      <div>
         {sortedBills.map((b) => {
           const next = nextRenewal({ renewalDate: b.dueDate, frequency: b.frequency || 'monthly' });
           const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -2615,19 +2689,24 @@ function BudgetDetails({ data, setData, accent }) {
           + Add bill
         </button>
       </div>
+      </CollapsibleSection>
 
       {/* Subscriptions — recurring services. Frequency lets you enter
           monthly amounts at face value or annual plans as Yearly (which
           we divide by 12 for the monthly + Year Overview totals). */}
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <SectionTitle>Subscriptions</SectionTitle>
+      <CollapsibleSection
+        id="budget.subs"
+        title="Subscriptions"
+        accent={accent}
+        right={(
           <span style={sumStyle}>
             <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(subsMonthly)}</span>&nbsp;/ mo
             &nbsp;·&nbsp;
             <span style={{ color: FG_WHITE, fontVariantNumeric: 'tabular-nums' }}>{fmt(subsYearly)}</span>&nbsp;/ yr
           </span>
-        </div>
+        )}
+      >
+      <div>
         {(safe.subscriptions || []).map((sub) => {
           const next = nextRenewal(sub);
           const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -2725,15 +2804,15 @@ function BudgetDetails({ data, setData, accent }) {
           + Add subscription
         </button>
       </div>
+      </CollapsibleSection>
 
       {/* Notes */}
-      <div>
-        <SectionTitle>Notes</SectionTitle>
+      <CollapsibleSection id="budget.notes" title="Notes" accent={accent} defaultOpen={false}>
         <NoteField
           value={safe.notes || ''}
           onChange={(v) => patch((c) => ({ ...c, notes: v }))}
         />
-      </div>
+      </CollapsibleSection>
     </div>
   );
 }
