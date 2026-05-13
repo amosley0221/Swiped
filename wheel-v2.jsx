@@ -108,7 +108,16 @@ function Wheel({
   // the CSS value on every render — iOS Safari has been observed to
   // ignore transform changes when the style key flips between undefined
   // and a value across renders.
-  const liftTransform = `translate3d(0, ${-(Number(lift) || 0)}px, 0)`;
+  const liftN = Number(lift) || 0;
+  const liftTransform = `translate3d(0, ${-liftN}px, 0)`;
+  // Fade the dial out as it rises so the user never sees its lower
+  // hemisphere or a hard flat bottom — instead the wheel dissolves
+  // upward as the gesture progresses. Uses a soft curve so the wheel
+  // stays mostly opaque for the first half of the travel.
+  const fadeStart = 40; // px of free lift before any fade kicks in
+  const liftFade = liftN > fadeStart
+    ? Math.max(0, 1 - Math.pow((liftN - fadeStart) / 200, 1.4))
+    : 1;
   return (
     <div
       onPointerDown={onPointerDown}
@@ -119,20 +128,16 @@ function Wheel({
         touchAction: 'none',
         userSelect: 'none',
         zIndex: 5,
-        // Clip the bottom — the dial is a full circle whose lower half
-        // normally sits below the screen edge. Without this, lifting the
-        // wheel exposes the rest of the circle and the dial reads as a
-        // full sphere instead of a half-disk sliding off the top.
-        overflow: 'hidden',
+        opacity: liftFade,
         transform: liftTransform,
         WebkitTransform: liftTransform,
-        willChange: 'transform',
+        willChange: 'transform, opacity',
       }}
     >
       <svg
         width={width} height={protrusion + 80}
         viewBox={`0 ${height - protrusion - 80} ${width} ${protrusion + 80}`}
-        style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}
+        style={{ position: 'absolute', inset: 0, overflow: 'visible' }}
       >
         <defs>
           <radialGradient id="dialShine" cx="50%" cy="0%" r="80%">

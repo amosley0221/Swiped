@@ -508,25 +508,34 @@ function App() {
     });
   };
 
-  // Elastic close: grab the top handle (or X) and pull the sheet down. The
-  // peak follows the finger, edges trail behind. Past the halfway point (or a
-  // quick downward fling) it commits closed.
+  // Close drag: grab the top handle, pull down. Detail page fades + the
+  // wheel comes back into view in sympathy. Tap-without-drag is ignored
+  // (no close on touch). Commits only past 100px or a clear downward
+  // fling; otherwise we bounce back to fully open.
   const onCloseDragStart = (e) => {
     e.preventDefault();
     const startX = e.clientX;
     const startY = e.clientY;
     const startTime = performance.now();
+    const wheelTotalHeight = (175 * stageScale) + 80;
+    const liftMax = Math.max(H * 0.6, wheelTotalHeight + 100);
     let moved = false;
     let lastY = startY;
-    setDetailOpen(false);
-    setLiquid({ active: true, progress: 1, finger: { x: startX, y: startY } });
+
+    // Liquid stays active so the wheel keeps rendering during the drag;
+    // we drive `lift` down toward 0 as the user pulls. detailOpen stays
+    // true throughout the drag so the page stays mounted; only the
+    // commit handler flips it false.
+    setLiquid({ active: true, progress: 1, finger: { x: startX, y: startY }, lift: liftMax });
 
     const move = (ev) => {
       lastY = ev.clientY;
       const dy = ev.clientY - startY;
       if (Math.abs(dy) > 4) moved = true;
-      const p = Math.max(0, Math.min(1, 1 - dy / H));
-      setLiquid((l) => ({ ...l, progress: p, finger: { x: ev.clientX, y: ev.clientY } }));
+      if (dy <= 0) return; // ignore upward drift
+      const newLift = Math.max(0, liftMax - dy);
+      const p = newLift / liftMax;
+      setLiquid((l) => ({ ...l, progress: p, lift: newLift, finger: { x: ev.clientX, y: ev.clientY } }));
     };
     const up = (ev) => {
       window.removeEventListener('pointermove', move);
@@ -536,18 +545,19 @@ function App() {
       const velocity = dy / Math.max(50, elapsed); // positive = downward fling
       const cur = liquidRef.current;
       if (!moved) {
-        animateSheet(cur, { progress: 0, fingerY: H }, 320, () => {
-          setLiquid({ active: false, progress: 0, finger: null });
-        });
+        // No drag, just a tap on the handle — keep the detail open.
+        // Snap lift back to liftMax for safety.
+        animateLift(cur, 1, 200, () => {});
         return;
       }
-      const commit = cur.progress < 0.55 || (velocity > 1.0 && cur.progress < 0.85);
+      const commit = dy > 100 || velocity > 1.0;
       if (commit) {
-        animateSheet(cur, { progress: 0, fingerY: H }, 280, () => {
-          setLiquid({ active: false, progress: 0, finger: null });
+        setDetailOpen(false);
+        animateLift(cur, 0, 280, () => {
+          setLiquid({ active: false, progress: 0, finger: null, lift: 0 });
         });
       } else {
-        animateSheet(cur, { progress: 1, fingerY: 0 }, 220, () => setDetailOpen(true));
+        animateLift(cur, 1, 220, () => {});
       }
     };
     window.addEventListener('pointermove', move);
@@ -1144,19 +1154,23 @@ function App() {
           follows the curve. The inner div translates the content down to the
           peak so text rides at the fingertip while the corners stretch up
           from below along the curve. */}
-      {detailOpen && (
+      {(detailOpen || (liquid.active && liquid.progress < 1)) && (
         <div
           style={{
-            // Page only mounts when the gesture commits — the wheel rises
-            // away under the user's finger first, then the detail view
-            // fades in cleanly over the now-empty space. CSS transition
-            // gives the reveal a soft 220ms animation.
+            // Mounted whenever the detail should be visible (open) or
+            // mid-close-animation. Opacity = liquid.progress during close
+            // so the page fades out as the wheel returns into view; full
+            // opacity once the open gesture has committed.
             position: 'absolute', inset: 0,
             zIndex: 40,
             background: '#0B0B0E',
-            opacity: 1,
-            pointerEvents: 'auto',
-            animation: 'swipedDetailReveal 260ms ease-out',
+            opacity: detailOpen && !liquid.active
+              ? 1
+              : (liquid.active ? Math.max(0, liquid.progress) : 0),
+            pointerEvents: detailOpen ? 'auto' : 'none',
+            animation: detailOpen && !liquid.active
+              ? 'swipedDetailReveal 260ms ease-out'
+              : 'none',
             willChange: 'opacity, transform',
           }}
         >
