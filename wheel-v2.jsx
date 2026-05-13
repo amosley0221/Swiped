@@ -167,59 +167,55 @@ function Wheel({
     visible.push({ i, x, y, angle, opacity, scale, section: sections[i] });
   }
 
-  // Dial geometry — the wheel is rendered as the original ring (circle
-  // arc with all icons visible around the rim) plus a slime "tongue"
-  // that protrudes from the dial's top up to the user's finger during a
-  // liquid drag. The selected icon rides the tongue's tip; everything
-  // else stays on the ring.
+  // Dial geometry — the ring rises with the gesture (the whole wheel
+  // follows the icon up) while the selected icon glues to the finger.
+  // liquid.lift already springs in app.jsx, so the lift value naturally
+  // lags behind raw finger travel during fast drags — that lag becomes
+  // the visible stretch between the icon and the dial's top, which is
+  // the elastic feel the user is after.
   const liftN = Number(lift) || 0;
-  // The dial itself rises only slightly during the gesture (~25% of
-  // lift) so the user can still see all the icons around the rim. The
-  // finger position drives the tongue's tip.
-  const dialLift = liftN * 0.25;
-  const dialCy = cy - dialLift;
+  const dialCy = cy - liftN;
   const peakX = (finger && typeof finger.x === 'number') ? finger.x : cx;
   // Natural top of the dial (where the tongue meets the ring).
   const dialTopX = cx;
   const dialTopY = dialCy - radius;
-  // Tongue peak — finger position during a drag, or just the dial
-  // top at rest (so the path collapses to nothing visible).
+  // Tongue peak — finger position during a drag, or dial top at rest.
   const peakY = (finger && typeof finger.y === 'number')
     ? Math.max(0, finger.y)
     : dialTopY;
-  // Tongue base half-width on the dial's surface. Widens slightly as
-  // it pulls farther so the protrusion reads as a thickening blob
-  // rather than a thin spike.
-  const pull = Math.max(0, dialTopY - peakY) + Math.abs(peakX - dialTopX);
-  const baseHalfWidth = 38 + Math.min(40, pull * 0.18);
+  // Pull magnitude — how far the icon has been stretched off the ring.
+  // Drives the tongue's thickness and stretch curve.
+  const pullY = Math.max(0, dialTopY - peakY);
+  const pullX = peakX - dialTopX;
+  const pull = Math.sqrt(pullY * pullY + pullX * pullX);
+  // Tongue base half-width on the dial's surface. Wider when pulled
+  // hard so the protrusion reads as thick elastic, not a spike.
+  const baseHalfWidth = 34 + Math.min(48, pull * 0.12);
   const leftBase = dialTopX - baseHalfWidth;
   const rightBase = dialTopX + baseHalfWidth;
-  // Tongue tip half-width — narrower so the shape tapers toward the
-  // finger.
-  const tipHalf = 26;
+  // Tongue tip half-width — about the icon's radius so it cradles
+  // the selected icon without a visible seam.
+  const tipHalf = 24;
   const leftTip = peakX - tipHalf;
   const rightTip = peakX + tipHalf;
-  // Control points lean toward the finger so the tongue's sides curve
-  // naturally as it stretches.
-  const cpY = (dialTopY + peakY) / 2;
+  // Bezier control points pull toward the finger so the sides curve
+  // outward as the stretch grows, like rubber.
+  const cpY = dialTopY + (peakY - dialTopY) * 0.55;
   const r = (n) => n.toFixed(1);
   const tonguePath = [
     `M ${r(leftBase)} ${r(dialTopY)}`,
     `C ${r(leftBase)} ${r(cpY)}, ${r(leftTip)} ${r(cpY)}, ${r(leftTip)} ${r(peakY)}`,
-    `Q ${r(peakX)} ${r(peakY - tipHalf * 0.6)}, ${r(rightTip)} ${r(peakY)}`,
+    `Q ${r(peakX)} ${r(peakY - tipHalf * 0.7)}, ${r(rightTip)} ${r(peakY)}`,
     `C ${r(rightTip)} ${r(cpY)}, ${r(rightBase)} ${r(cpY)}, ${r(rightBase)} ${r(dialTopY)}`,
     `Z`,
   ].join(' ');
-  // Icons — restore the original ring layout. Selected icon rides the
-  // tongue's tip; others orbit the dial center as before. Per-icon
-  // spring lag applies on the index axis only.
+  // Icons — restore the ring layout. Selected icon rides the tongue
+  // tip; others orbit the (lifted) dial center as before.
   const peakSelectedIdx = Math.round(index);
   const iconRecomputed = visible.map((v) => {
     if (v.i === peakSelectedIdx && finger) {
-      // Selected icon rides the tongue tip during the drag.
       return { ...v, x: peakX, y: peakY };
     }
-    // Other icons orbit the (lifted) dial center, same as the original.
     const rInner = radius - 38;
     return {
       ...v,
