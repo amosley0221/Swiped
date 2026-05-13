@@ -20,6 +20,7 @@ function Wheel({
   onLiquidStart,   // ({startX, startY}) => start liquid gesture
   scale = 1,       // typography + icon scale (matches the brief panel's stageScale)
   lift = 0,        // px translated up during a liquid drag (wheel "rises" with finger)
+  finger = null,   // { x, y } pointer position during a liquid drag
 }) {
   const cx = width / 2;
   const cy = height + (radius - protrusion); // pivot below screen
@@ -166,33 +167,77 @@ function Wheel({
     visible.push({ i, x, y, angle, opacity, scale, section: sections[i] });
   }
 
-  // Tent shape — the dial used to be a full circle clipped naturally by the
-  // screen edge; on lift, the lower hemisphere became visible and read as a
-  // floating sphere. Instead, render a closed path: vertical sides from the
-  // screen bottom up to where the dial's arc would cross x=0 and x=W, then
-  // the original circle's arc across the top. As lift grows, the sides
-  // extend; the arc keeps the original dial curvature. No gap at the
-  // bottom, no exposed lower hemisphere.
+  // Slime / bell shape — the wheel's outline is a closed path whose
+  // peak follows the finger during a liquid drag. At rest the peak
+  // sits at the natural dial top (cx, H-protrusion) and the sides
+  // anchor at the screen bottom corners, so the silhouette reads as
+  // the original dial arc. As the user drags, finger.x slides the
+  // peak sideways and finger.y lifts it; the sides creep up at a
+  // fraction of the lift rate so the bell stretches taller and
+  // slightly inward — slime being pulled by a fingertip.
   const liftN = Number(lift) || 0;
-  const dialCy = cy - liftN;
-  // The y where the dial's circle crosses the screen's left/right edges —
-  // that's where the arc meets the rectangular sides of the tent.
-  const halfChord = Math.sqrt(Math.max(0.01, radius * radius - cx * cx));
-  const archEndY = dialCy - halfChord;
-  // Recompute icon positions so they ride the lifted arc.
-  const iconRecomputed = visible.map((v) => ({
-    ...v,
-    y: dialCy + (radius - 38) * Math.sin(v.angle),
-  }));
+  const peakX = (finger && typeof finger.x === 'number') ? finger.x : cx;
+  const restPeakY = height - protrusion;
+  const peakY = (finger && typeof finger.y === 'number')
+    ? Math.max(0, finger.y)
+    : Math.max(0, restPeakY - liftN);
+  // Side anchors creep up at ~30% of lift. Stays at screen bottom
+  // when fully at rest so the dial silhouette matches what it was.
+  const sidesY = Math.max(0, height - liftN * 0.3);
+  // Bell half-width — widest at rest (=W/2 so anchors at screen
+  // edges), narrows slightly as it lifts so the bell becomes more
+  // peaked.
+  const liftFrac = Math.min(1, liftN / Math.max(150, height * 0.4));
+  const halfWidth = Math.max(width * 0.4, width / 2 - liftFrac * width * 0.1);
+  const leftAnchor = Math.max(0, peakX - halfWidth);
+  const rightAnchor = Math.min(width, peakX + halfWidth);
+  // Cubic bezier control offsets — these set the bell's "roundness".
+  // Matches the curvature of the original circle dial when at rest.
+  const cp = halfWidth * 0.55;
+  const r = (n) => n.toFixed(1);
+  const dialPath = [
+    `M 0 ${r(height + 20)}`,
+    `L 0 ${r(sidesY)}`,
+    `L ${r(leftAnchor)} ${r(sidesY)}`,
+    `C ${r(leftAnchor + cp)} ${r(sidesY)}, ${r(peakX - cp)} ${r(peakY)}, ${r(peakX)} ${r(peakY)}`,
+    `C ${r(peakX + cp)} ${r(peakY)}, ${r(rightAnchor - cp)} ${r(sidesY)}, ${r(rightAnchor)} ${r(sidesY)}`,
+    `L ${r(width)} ${r(sidesY)}`,
+    `L ${r(width)} ${r(height + 20)}`,
+    'Z',
+  ].join(' ');
+  // Recompute icon positions to ride the bell. Selected icon glues to
+  // the peak; others orbit around it on a virtual arc whose center is
+  // shifted toward the finger so the whole cluster leans with the
+  // gesture. Spring lag from iconStatesRef still applies on the
+  // index axis, so outer icons trail behind during fast rotation.
+  const peakSelectedIdx = Math.round(index);
+  const iconRecomputed = visible.map((v) => {
+    if (v.i === peakSelectedIdx) {
+      // Selected icon glued to the peak — that's the slime tip.
+      return { ...v, x: peakX, y: peakY };
+    }
+    // Others: rotated around the lifted center. Center is the peak
+    // shifted down by the original dial's radius along the local
+    // "up" direction (just straight down here for simplicity).
+    const localCx = peakX;
+    const localCy = peakY + (radius - 38);
+    return {
+      ...v,
+      x: localCx + (radius - 38) * Math.cos(v.angle),
+      y: localCy + (radius - 38) * Math.sin(v.angle),
+    };
+  });
   return (
     <div
       onPointerDown={onPointerDown}
       style={{
         position: 'absolute',
         left: 0, right: 0, bottom: 0,
-        // Container always fills the screen height when lifted so the
-        // SVG has somewhere to draw the extended tent sides. At rest
-        // (lift=0) it's still the original gesture-zone height.
+        // Container always fills the screen height — the bell peak can
+        // rise anywhere up to y=0 during a slime drag, and the icons
+        // are positioned in viewport-y, so we need the full canvas.
+        // Pointer events on the dial-only region are filtered below
+        // so this big container doesn't swallow gestures at the top.
         height: liftN > 0 ? height : protrusion + 80,
         touchAction: 'none',
         userSelect: 'none',
@@ -201,10 +246,8 @@ function Wheel({
       }}
     >
       <svg
-        width={width} height={liftN > 0 ? height : protrusion + 80}
-        viewBox={liftN > 0
-          ? `0 0 ${width} ${height}`
-          : `0 ${height - protrusion - 80} ${width} ${protrusion + 80}`}
+        width={width} height={height}
+        viewBox={`0 0 ${width} ${height}`}
         style={{ position: 'absolute', inset: 0, overflow: 'visible' }}
       >
         <defs>
@@ -217,53 +260,31 @@ function Wheel({
             <stop offset="100%" stopColor="rgba(255,255,255,0)" />
           </linearGradient>
         </defs>
-        {/* dial body — tent shape: vertical sides from screen bottom up to
-            the arc-meets-edge points, then arc across the top. */}
-        <path
-          d={`M 0 ${height} L 0 ${archEndY} A ${radius} ${radius} 0 0 1 ${width} ${archEndY} L ${width} ${height} Z`}
-          fill="#0B0B0E"
-        />
-        {/* subtle inner ring (rim track where icons sit) — keep as a
-            circle so the rim track stays visible at the lifted cy. */}
-        <circle
-          cx={cx} cy={dialCy} r={radius - 6}
-          fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"
-        />
-        <circle
-          cx={cx} cy={dialCy} r={radius - 56}
-          fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5"
-        />
-        {/* liquid slosh — a wave layer at the top of the dial that wobbles
-            with scroll velocity and time. Subtle when idle, animated when scrolling. */}
-        <LiquidSlosh
-          cx={cx} cy={dialCy} R={radius}
-          width={width} height={height} protrusion={protrusion}
-          velocity={velocity} accent={accent}
-        />
-        {/* top highlight — keyed to the lifted center so the shine moves
-            with the arc as the wheel rises. */}
-        <circle cx={cx} cy={dialCy} r={radius} fill="url(#dialShine)" />
-        {/* selection indicator — small tick at 12 o'clock outside dial */}
+        {/* dial body — bell / slime shape whose peak follows the finger.
+            At rest the bell sits at the natural dial position; during a
+            lift the peak rides the finger position (x and y both), and
+            the sides creep up at a fraction of the lift rate so the
+            silhouette stretches taller and narrower. */}
+        <path d={dialPath} fill="#0B0B0E" />
+        {/* selection indicator — small tick above the bell's peak */}
         <line
-          x1={cx} y1={dialCy - radius - 12}
-          x2={cx} y2={dialCy - radius - 4}
+          x1={peakX} y1={peakY - 16}
+          x2={peakX} y2={peakY - 8}
           stroke={accent} strokeWidth="2" strokeLinecap="round"
         />
         <circle cx={cx} cy={dialCy - radius - 16} r="2.5" fill={accent} />
       </svg>
 
-      {/* section icons — absolutely positioned divs, easier for SVG icon swap */}
+      {/* section icons — absolutely positioned divs in viewport-y space
+          (container is bottom-anchored at full height). */}
       {iconRecomputed.map(({ i, x, y, opacity, scale, section }) => {
         const isSelected = Math.abs(i - index) < 0.5;
-        // top is viewport-y for full-height container, else relative to
-        // the original bottom-anchored container.
-        const containerTop = liftN > 0 ? 0 : (height - protrusion - 80);
         return (
           <div
             key={section.id}
             style={{
               position: 'absolute',
-              left: x, top: y - containerTop,
+              left: x, top: y,
               transform: `translate(-50%, -50%) scale(${scale})`,
               opacity,
               transition: 'opacity 0.18s ease-out',

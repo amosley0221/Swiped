@@ -1139,6 +1139,7 @@ function App() {
         onLiquidStart={onLiquidStart}
         scale={stageScale}
         lift={liquid.lift || 0}
+        finger={liquid.active ? liquid.finger : null}
       />
 
       {/* Hint */}
