@@ -104,6 +104,11 @@ function Wheel({
 
   // Dial path — a black filled circle, but only the top portion shows above the
   // screen edge. We render as <circle>; overflow is clipped by the parent.
+  // Always set the transform inline (not conditionally) so React updates
+  // the CSS value on every render — iOS Safari has been observed to
+  // ignore transform changes when the style key flips between undefined
+  // and a value across renders.
+  const liftTransform = `translate3d(0, ${-(Number(lift) || 0)}px, 0)`;
   return (
     <div
       onPointerDown={onPointerDown}
@@ -114,8 +119,9 @@ function Wheel({
         touchAction: 'none',
         userSelect: 'none',
         zIndex: 5,
-        transform: lift ? `translate3d(0, ${-lift}px, 0)` : undefined,
-        willChange: lift ? 'transform' : undefined,
+        transform: liftTransform,
+        WebkitTransform: liftTransform,
+        willChange: 'transform',
       }}
     >
       <svg
