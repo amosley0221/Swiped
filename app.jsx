@@ -1061,11 +1061,11 @@ function App() {
         display: 'flex', flexDirection: 'column', justifyContent: 'flex-start',
         padding: '0 28px',
         zIndex: 3,
-        // Fade out as the wheel rises so the detail page underneath becomes
-        // the visual focus. Translates a touch upward in sympathy with the
-        // wheel — keeps the brief panel "attached" to the dial as it lifts.
-        opacity: Math.max(0, 1 - liquid.progress * 1.6),
-        transform: liquid.lift ? `translate3d(0, ${-liquid.lift * 0.35}px, 0)` : undefined,
+        // Fade out only late in the drag — the brief should still be
+        // legible while the wheel is rising under the user's finger, and
+        // only disappear as the page underneath comes into view.
+        opacity: Math.max(0, 1 - Math.max(0, (liquid.progress - 0.5) / 0.5)),
+        transform: liquid.lift ? `translate3d(0, ${-liquid.lift * 0.25}px, 0)` : undefined,
         willChange: liquid.lift ? 'transform, opacity' : undefined,
       }}>
         <BriefPanel
@@ -1082,8 +1082,8 @@ function App() {
       {/* Section dots / progress (between brief and wheel) — fade with brief
           as the wheel rises so the lifted dial is the only thing in motion. */}
       <div style={{
-        opacity: Math.max(0, 1 - liquid.progress * 1.6),
-        transform: liquid.lift ? `translate3d(0, ${-liquid.lift * 0.6}px, 0)` : undefined,
+        opacity: Math.max(0, 1 - Math.max(0, (liquid.progress - 0.5) / 0.5)),
+        transform: liquid.lift ? `translate3d(0, ${-liquid.lift * 0.5}px, 0)` : undefined,
         transition: liquid.active ? undefined : 'opacity 0.18s ease',
       }}>
         <SectionDots
@@ -1131,17 +1131,20 @@ function App() {
           follows the curve. The inner div translates the content down to the
           peak so text rides at the fingertip while the corners stretch up
           from below along the curve. */}
-      {(detailOpen || liquid.progress > 0.02) && (
+      {(detailOpen || (liquid.active && liquid.progress > 0.5)) && (
         <div
           style={{
             // Sits behind the rising wheel during the drag (z=4 < wheel z=5)
             // so the wheel reveals the page underneath as it lifts. Once
             // the gesture commits, jump to z=40 so the detail captures all
-            // pointer events and overlays the rest of the chrome.
+            // pointer events and overlays the rest of the chrome. The
+            // panel is held invisible until progress passes 0.7, then
+            // ramps in quickly — so the page only appears once the wheel
+            // is nearly off-screen, not during the early drag.
             position: 'absolute', inset: 0,
             zIndex: detailOpen ? 40 : 4,
             background: '#0B0B0E',
-            opacity: detailOpen ? 1 : Math.max(0, liquid.progress * 1.2),
+            opacity: detailOpen ? 1 : Math.max(0, (liquid.progress - 0.7) / 0.3),
             pointerEvents: detailOpen ? 'auto' : 'none',
             willChange: 'opacity',
           }}

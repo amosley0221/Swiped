@@ -121,6 +121,11 @@ function Wheel({
         zIndex: 5,
         transform: liftTransform,
         WebkitTransform: liftTransform,
+        // CSS spring transition — the wheel chases the finger's target
+        // position with a brief overshoot, which is what gives the
+        // "jelly" feel without any rAF interpolation in JS.
+        transition: 'transform 90ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+        WebkitTransition: '-webkit-transform 90ms cubic-bezier(0.34, 1.56, 0.64, 1)',
         willChange: 'transform',
       }}
     >
