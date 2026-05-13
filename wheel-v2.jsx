@@ -114,12 +114,12 @@ function Wheel({
       for (let i = 0; i < states.length; i++) {
         const s = states[i];
         if (!s) continue;
-        // Distance from the currently-selected slot — stiffness ramps
-        // from 0.32 (icon under finger) down to 0.06 (icons several
-        // positions away). Damping kept loose for visible trailing.
+        // Subtle per-icon lag — closer to the selected slot follows
+        // tightly, outer icons drift slightly behind. Damping kept high
+        // so springs settle without overshoot/bounce.
         const dist = Math.abs(i - target);
-        const stiffness = Math.max(0.06, 0.32 - dist * 0.045);
-        const damping = 0.78;
+        const stiffness = Math.max(0.12, 0.30 - dist * 0.03);
+        const damping = 0.55;
         const dx = target - s.perceivedIdx;
         s.velocity = s.velocity * damping + dx * stiffness;
         s.perceivedIdx += s.velocity;
@@ -166,32 +166,45 @@ function Wheel({
     visible.push({ i, x, y, angle, opacity, scale, section: sections[i] });
   }
 
-  // Dial path — a black filled circle, but only the top portion shows above the
-  // screen edge. We render as <circle>; overflow is clipped by the parent.
-  // Always set the transform inline (not conditionally) so React updates
-  // the CSS value on every render — iOS Safari has been observed to
-  // ignore transform changes when the style key flips between undefined
-  // and a value across renders.
+  // Tent shape — the dial used to be a full circle clipped naturally by the
+  // screen edge; on lift, the lower hemisphere became visible and read as a
+  // floating sphere. Instead, render a closed path: vertical sides from the
+  // screen bottom up to where the dial's arc would cross x=0 and x=W, then
+  // the original circle's arc across the top. As lift grows, the sides
+  // extend; the arc keeps the original dial curvature. No gap at the
+  // bottom, no exposed lower hemisphere.
   const liftN = Number(lift) || 0;
-  const liftTransform = `translate3d(0, ${-liftN}px, 0)`;
+  const dialCy = cy - liftN;
+  // The y where the dial's circle crosses the screen's left/right edges —
+  // that's where the arc meets the rectangular sides of the tent.
+  const halfChord = Math.sqrt(Math.max(0.01, radius * radius - cx * cx));
+  const archEndY = dialCy - halfChord;
+  // Recompute icon positions so they ride the lifted arc.
+  const iconRecomputed = visible.map((v) => ({
+    ...v,
+    y: dialCy + (radius - 38) * Math.sin(v.angle),
+  }));
   return (
     <div
       onPointerDown={onPointerDown}
       style={{
         position: 'absolute',
         left: 0, right: 0, bottom: 0,
-        height: protrusion + 80, // gesture zone slightly taller than visible dial
+        // Container always fills the screen height when lifted so the
+        // SVG has somewhere to draw the extended tent sides. At rest
+        // (lift=0) it's still the original gesture-zone height.
+        height: liftN > 0 ? height : protrusion + 80,
         touchAction: 'none',
         userSelect: 'none',
         zIndex: 5,
-        transform: liftTransform,
-        WebkitTransform: liftTransform,
-        willChange: 'transform',
+        overflow: 'hidden',
       }}
     >
       <svg
-        width={width} height={protrusion + 80}
-        viewBox={`0 ${height - protrusion - 80} ${width} ${protrusion + 80}`}
+        width={width} height={liftN > 0 ? height : protrusion + 80}
+        viewBox={liftN > 0
+          ? `0 0 ${width} ${height}`
+          : `0 ${height - protrusion - 80} ${width} ${protrusion + 80}`}
         style={{ position: 'absolute', inset: 0, overflow: 'visible' }}
       >
         <defs>
@@ -204,45 +217,53 @@ function Wheel({
             <stop offset="100%" stopColor="rgba(255,255,255,0)" />
           </linearGradient>
         </defs>
-        {/* dial body */}
-        <circle cx={cx} cy={cy} r={radius} fill="#0B0B0E" />
-        {/* subtle inner ring (rim track where icons sit) */}
+        {/* dial body — tent shape: vertical sides from screen bottom up to
+            the arc-meets-edge points, then arc across the top. */}
+        <path
+          d={`M 0 ${height} L 0 ${archEndY} A ${radius} ${radius} 0 0 1 ${width} ${archEndY} L ${width} ${height} Z`}
+          fill="#0B0B0E"
+        />
+        {/* subtle inner ring (rim track where icons sit) — keep as a
+            circle so the rim track stays visible at the lifted cy. */}
         <circle
-          cx={cx} cy={cy} r={radius - 6}
+          cx={cx} cy={dialCy} r={radius - 6}
           fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"
         />
         <circle
-          cx={cx} cy={cy} r={radius - 56}
+          cx={cx} cy={dialCy} r={radius - 56}
           fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5"
         />
         {/* liquid slosh — a wave layer at the top of the dial that wobbles
             with scroll velocity and time. Subtle when idle, animated when scrolling. */}
         <LiquidSlosh
-          cx={cx} cy={cy} R={radius}
+          cx={cx} cy={dialCy} R={radius}
           width={width} height={height} protrusion={protrusion}
           velocity={velocity} accent={accent}
         />
-        {/* top highlight */}
-        <circle cx={cx} cy={cy} r={radius} fill="url(#dialShine)" />
+        {/* top highlight — keyed to the lifted center so the shine moves
+            with the arc as the wheel rises. */}
+        <circle cx={cx} cy={dialCy} r={radius} fill="url(#dialShine)" />
         {/* selection indicator — small tick at 12 o'clock outside dial */}
         <line
-          x1={cx} y1={cy - radius - 12}
-          x2={cx} y2={cy - radius - 4}
+          x1={cx} y1={dialCy - radius - 12}
+          x2={cx} y2={dialCy - radius - 4}
           stroke={accent} strokeWidth="2" strokeLinecap="round"
         />
-        <circle cx={cx} cy={cy - radius - 16} r="2.5" fill={accent} />
+        <circle cx={cx} cy={dialCy - radius - 16} r="2.5" fill={accent} />
       </svg>
 
       {/* section icons — absolutely positioned divs, easier for SVG icon swap */}
-      {visible.map(({ i, x, y, opacity, scale, section }) => {
+      {iconRecomputed.map(({ i, x, y, opacity, scale, section }) => {
         const isSelected = Math.abs(i - index) < 0.5;
-        // Rotate icon so it stays "upright" relative to wheel? Keep upright to viewer.
+        // top is viewport-y for full-height container, else relative to
+        // the original bottom-anchored container.
+        const containerTop = liftN > 0 ? 0 : (height - protrusion - 80);
         return (
           <div
             key={section.id}
             style={{
               position: 'absolute',
-              left: x, top: y - (height - protrusion - 80),
+              left: x, top: y - containerTop,
               transform: `translate(-50%, -50%) scale(${scale})`,
               opacity,
               transition: 'opacity 0.18s ease-out',
