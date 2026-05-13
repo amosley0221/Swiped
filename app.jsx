@@ -390,12 +390,10 @@ function App() {
     setMealsData({});
   };
 
-  // Sheet gesture state. `finger` is the live pointer position; `progress`
-  // is the open ratio (0=wheel resting on screen, 1=wheel fully lifted off
-  // the top, revealing the DetailView page sitting behind it). The wheel
-  // itself rises with the finger — there's no separate page rising from
-  // below. `lift` is the px the wheel container is translated upward.
-  const [liquid, setLiquid] = React.useState({ active: false, progress: 0, finger: null, lift: 0 });
+  // Sheet gesture state. `finger` is the live (or last) pointer position;
+  // `progress` is the open ratio (0=hidden, 1=fully covering). Together they
+  // drive the curved sheet path: peak rides at `finger`, edges trail below.
+  const [liquid, setLiquid] = React.useState({ active: false, progress: 0, finger: null });
   const [detailOpen, setDetailOpen] = React.useState(false);
   const liquidRef = React.useRef(liquid);
   liquidRef.current = liquid;
@@ -412,58 +410,29 @@ function App() {
 
   const [pulseKey, setPulseKey] = React.useState(0);
 
-  // Liquid drag: spring-based follow so the wheel "chases" the finger
-  // with a jelly lag instead of moving 1:1. liftMax computed inline
-  // because `protrusion` is declared later in the component body and
-  // reading it up-top would TDZ to undefined / NaN.
+  // Elastic open: the peak of the sheet's top edge tracks the finger; the
+  // edges trail with a lag that shrinks as progress nears 1. Past the
+  // halfway mark (or a quick upward fling) it commits open.
   const onLiquidStart = ({ startX, startY }) => {
-    const wheelTotalHeight = (175 * stageScale) + 80; // mirrors `protrusion + 80`
-    const liftMax = Math.max(H * 0.6, wheelTotalHeight + 100);
-    setLiquid({ active: true, progress: 0, finger: { x: startX, y: startY }, lift: 0 });
+    setLiquid({ active: true, progress: 0, finger: { x: startX, y: startY } });
     const startTime = performance.now();
-
-    // Spring physics state, driven by rAF — `target` is set by every
-    // pointer move; `lift` chases it with a small overshoot, which is
-    // what gives the dial its rubbery feel.
-    const spring = { target: 0, lift: 0, velocity: 0, alive: true };
-    const STIFFNESS = 0.22;
-    const DAMPING = 0.72;
-    let rafId;
-    const tick = () => {
-      if (!spring.alive) return;
-      const dx = spring.target - spring.lift;
-      spring.velocity = spring.velocity * DAMPING + dx * STIFFNESS;
-      spring.lift += spring.velocity;
-      const p = Math.max(0, Math.min(1, spring.lift / liftMax));
-      setLiquid((l) => ({ ...l, lift: spring.lift, progress: p }));
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-
     const move = (ev) => {
       const dy = startY - ev.clientY;
-      const raw = Math.max(0, dy);
-      // 1:1 up to liftMax, then asymptotic squish past the threshold.
-      spring.target = raw < liftMax ? raw : liftMax + (raw - liftMax) * 0.2;
-      setLiquid((l) => ({ ...l, finger: { x: ev.clientX, y: ev.clientY } }));
+      const p = Math.max(0, Math.min(1, dy / H));
+      setLiquid((l) => ({ ...l, progress: p, finger: { x: ev.clientX, y: ev.clientY } }));
     };
     const up = (ev) => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
-      spring.alive = false;
-      cancelAnimationFrame(rafId);
       const dy = startY - (ev.clientY ?? startY);
       const elapsed = performance.now() - startTime;
       const velocity = dy / Math.max(50, elapsed);
       const cur = liquidRef.current;
-      if (cur.progress > 0.4 || (velocity > 1.0 && cur.progress > 0.1)) {
-        // Commit: animate the wheel fully off the top, then open the
-        // detail view. Page reveal happens AFTER the wheel finishes
-        // — keeps the metaphor "wheel rises away, page is revealed".
-        animateLift(cur, 1, 260, () => setDetailOpen(true));
+      if (cur.progress > 0.45 || (velocity > 1.2 && cur.progress > 0.15)) {
+        animateSheet(cur, { progress: 1, fingerY: 0 }, 280, () => setDetailOpen(true));
       } else {
-        animateLift(cur, 0, 240, () => {
-          setLiquid({ active: false, progress: 0, finger: null, lift: 0 });
+        animateSheet(cur, { progress: 0, fingerY: H }, 220, () => {
+          setLiquid({ active: false, progress: 0, finger: null });
         });
       }
     };
@@ -471,30 +440,20 @@ function App() {
     window.addEventListener('pointerup', up);
   };
 
-  // Tween wheel lift toward a target progress (0..1). Opening eases out with
-  // a slight elastic curve so the wheel feels rubbery; closing eases in.
-  const animateLift = (from, targetP, duration, done) => {
-    // Recompute liftMax here for the same reason as onLiquidStart — using
-    // the outer-scope `protrusion` directly is TDZ-NaN at this point.
-    const liftMax = Math.max(H * 0.6, (175 * stageScale) + 80 + 100);
+  // Tween both progress AND finger.y to targets simultaneously. Needed so the
+  // curved peak flattens to the top (or sinks to the bottom) during snaps.
+  const animateSheet = (from, target, duration, done) => {
     const startT = performance.now();
     const fromP = from.progress;
-    const fromLift = from.lift || 0;
-    const targetLift = targetP * liftMax;
-    const opening = targetP > fromP;
+    const fromY = from.finger?.y ?? H;
+    const fingerX = from.finger?.x ?? W / 2;
+    const opening = target.progress > fromP;
     const tick = () => {
       const k = Math.min(1, (performance.now() - startT) / duration);
-      let eased;
-      if (opening) {
-        // Slight overshoot for elastic settle (back-out).
-        const s = 1.4;
-        eased = 1 + (s + 1) * Math.pow(k - 1, 3) + s * Math.pow(k - 1, 2);
-      } else {
-        eased = Math.pow(k, 2);
-      }
-      const lift = fromLift + (targetLift - fromLift) * eased;
-      const p = fromP + (targetP - fromP) * eased;
-      setLiquid((l) => ({ ...l, progress: p, lift }));
+      const eased = opening ? 1 - Math.pow(1 - k, 3) : Math.pow(k, 2);
+      const p = fromP + (target.progress - fromP) * eased;
+      const fy = fromY + (target.fingerY - fromY) * eased;
+      setLiquid((l) => ({ ...l, progress: p, finger: { x: fingerX, y: fy } }));
       if (k < 1) requestAnimationFrame(tick);
       else done && done();
     };
@@ -503,39 +462,30 @@ function App() {
 
   const closeDetail = () => {
     setDetailOpen(false);
-    animateLift(liquidRef.current, 0, 320, () => {
-      setLiquid({ active: false, progress: 0, finger: null, lift: 0 });
+    animateSheet(liquidRef.current, { progress: 0, fingerY: H }, 320, () => {
+      setLiquid({ active: false, progress: 0, finger: null });
     });
   };
 
-  // Close drag: grab the top handle, pull down. Detail page fades + the
-  // wheel comes back into view in sympathy. Tap-without-drag is ignored
-  // (no close on touch). Commits only past 100px or a clear downward
-  // fling; otherwise we bounce back to fully open.
+  // Elastic close: grab the top handle (or X) and pull the sheet down. The
+  // peak follows the finger, edges trail behind. Past the halfway point (or a
+  // quick downward fling) it commits closed.
   const onCloseDragStart = (e) => {
     e.preventDefault();
     const startX = e.clientX;
     const startY = e.clientY;
     const startTime = performance.now();
-    const wheelTotalHeight = (175 * stageScale) + 80;
-    const liftMax = Math.max(H * 0.6, wheelTotalHeight + 100);
     let moved = false;
     let lastY = startY;
-
-    // Liquid stays active so the wheel keeps rendering during the drag;
-    // we drive `lift` down toward 0 as the user pulls. detailOpen stays
-    // true throughout the drag so the page stays mounted; only the
-    // commit handler flips it false.
-    setLiquid({ active: true, progress: 1, finger: { x: startX, y: startY }, lift: liftMax });
+    setDetailOpen(false);
+    setLiquid({ active: true, progress: 1, finger: { x: startX, y: startY } });
 
     const move = (ev) => {
       lastY = ev.clientY;
       const dy = ev.clientY - startY;
       if (Math.abs(dy) > 4) moved = true;
-      if (dy <= 0) return; // ignore upward drift
-      const newLift = Math.max(0, liftMax - dy);
-      const p = newLift / liftMax;
-      setLiquid((l) => ({ ...l, progress: p, lift: newLift, finger: { x: ev.clientX, y: ev.clientY } }));
+      const p = Math.max(0, Math.min(1, 1 - dy / H));
+      setLiquid((l) => ({ ...l, progress: p, finger: { x: ev.clientX, y: ev.clientY } }));
     };
     const up = (ev) => {
       window.removeEventListener('pointermove', move);
@@ -545,21 +495,18 @@ function App() {
       const velocity = dy / Math.max(50, elapsed); // positive = downward fling
       const cur = liquidRef.current;
       if (!moved) {
-        // No drag, just a tap on the handle — keep the detail open.
-        // Snap lift back to liftMax for safety.
-        animateLift(cur, 1, 200, () => {});
+        animateSheet(cur, { progress: 0, fingerY: H }, 320, () => {
+          setLiquid({ active: false, progress: 0, finger: null });
+        });
         return;
       }
-      const commit = dy > 100 || velocity > 1.0;
+      const commit = cur.progress < 0.55 || (velocity > 1.0 && cur.progress < 0.85);
       if (commit) {
-        // Don't flip detailOpen until the animation finishes — keeps the
-        // panel mounted so it fades cleanly while liquid.progress drops.
-        animateLift(cur, 0, 280, () => {
-          setDetailOpen(false);
-          setLiquid({ active: false, progress: 0, finger: null, lift: 0 });
+        animateSheet(cur, { progress: 0, fingerY: H }, 280, () => {
+          setLiquid({ active: false, progress: 0, finger: null });
         });
       } else {
-        animateLift(cur, 1, 220, () => {});
+        animateSheet(cur, { progress: 1, fingerY: 0 }, 220, () => setDetailOpen(true));
       }
     };
     window.addEventListener('pointermove', move);
@@ -1015,6 +962,13 @@ function App() {
   // Brief content fade key (transitions when idx changes)
   const briefKey = safeIdx;
 
+  // Curved sheet outline shared by the background and the DetailView clip-path.
+  const sheetPathD = sheetPath({
+    progress: liquid.progress,
+    finger: liquid.finger,
+    W, H,
+  });
+
 
 
   return (
@@ -1086,12 +1040,6 @@ function App() {
         display: 'flex', flexDirection: 'column', justifyContent: 'flex-start',
         padding: '0 28px',
         zIndex: 3,
-        // Fade out only late in the drag — the brief should still be
-        // legible while the wheel is rising under the user's finger, and
-        // only disappear as the page underneath comes into view.
-        opacity: Math.max(0, 1 - Math.max(0, (liquid.progress - 0.5) / 0.5)),
-        transform: liquid.lift ? `translate3d(0, ${-liquid.lift * 0.25}px, 0)` : undefined,
-        willChange: liquid.lift ? 'transform, opacity' : undefined,
       }}>
         <BriefPanel
           key={briefKey}
@@ -1104,26 +1052,19 @@ function App() {
         />
       </div>
 
-      {/* Section dots / progress (between brief and wheel) — fade with brief
-          as the wheel rises so the lifted dial is the only thing in motion. */}
-      <div style={{
-        opacity: Math.max(0, 1 - Math.max(0, (liquid.progress - 0.5) / 0.5)),
-        transform: liquid.lift ? `translate3d(0, ${-liquid.lift * 0.5}px, 0)` : undefined,
-        transition: liquid.active ? undefined : 'opacity 0.18s ease',
-      }}>
-        <SectionDots
-          sections={wheelSections}
-          index={idx}
-          accent={t.accent}
-          bottom={protrusion + 28 * stageScale}
-          scale={stageScale}
-          onJump={(i) => setTargetIdx(i)}
-          onOpenPicker={() => setPickerOpen(true)}
-        />
-      </div>
+      {/* Section dots / progress (between brief and wheel) */}
+      <SectionDots
+        sections={wheelSections}
+        index={idx}
+        accent={t.accent}
+        bottom={protrusion + 28 * stageScale}
+        scale={stageScale}
+        onJump={(i) => setTargetIdx(i)}
+        onOpenPicker={() => setPickerOpen(true)}
+      />
       {/* small upward arrow chip floating above wheel — touch handle hint */}
 
-      {/* Wheel — rises with the finger during a liquid drag */}
+      {/* Wheel */}
       <Wheel
         sections={wheelSections}
         index={idx}
@@ -1138,8 +1079,6 @@ function App() {
         onSettle={onWheelSettle}
         onLiquidStart={onLiquidStart}
         scale={stageScale}
-        lift={liquid.lift || 0}
-        finger={liquid.active ? liquid.finger : null}
       />
 
       {/* Hint */}
@@ -1153,29 +1092,29 @@ function App() {
       {/* (No separate dark sheet — the wheel itself rises during the drag
           and reveals the DetailView sitting behind it.) */}
 
-      {/* Detail content lives behind the wheel and is revealed as the wheel
+      {/* Sheet — black curved panel. Top edge peaks at the finger; the edges
+          trail below by a lag that shrinks as the sheet nears fully open. */}
+      <LiquidReveal path={sheetPathD} progress={liquid.progress} />
+
+      {/* Detail content lives inside the same clip-path, so its visible edge
           follows the curve. The inner div translates the content down to the
           peak so text rides at the fingertip while the corners stretch up
           from below along the curve. */}
-      {detailOpen && (
+      {(detailOpen || liquid.progress > 0.02) && (
         <div
           style={{
-            // Panel is mounted only when detailOpen=true — kept up
-            // throughout the close-drag and only unmounted in the close
-            // animation's done-callback. Opacity fades with progress
-            // during the close drag; otherwise full 1.0.
-            position: 'absolute', inset: 0,
-            zIndex: 40,
-            background: '#0B0B0E',
-            opacity: liquid.active ? Math.max(0, liquid.progress) : 1,
-            pointerEvents: 'auto',
-            animation: liquid.active ? 'none' : 'swipedDetailReveal 260ms ease-out',
-            willChange: 'opacity, transform',
+            position: 'absolute', inset: 0, zIndex: 40,
+            clipPath: sheetPathD ? `path('${sheetPathD}')` : 'none',
+            WebkitClipPath: sheetPathD ? `path('${sheetPathD}')` : 'none',
+            pointerEvents: detailOpen ? 'auto' : 'none',
+            willChange: 'clip-path',
           }}
         >
           <div
             style={{
               position: 'absolute', inset: 0,
+              transform: `translate3d(0, ${Math.max(0, liquid.finger?.y ?? 0)}px, 0)`,
+              willChange: 'transform',
             }}
           >
             <DetailView

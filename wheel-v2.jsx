@@ -19,8 +19,6 @@ function Wheel({
   onSettle,        // (snappedIdx) => void   when fling settles
   onLiquidStart,   // ({startX, startY}) => start liquid gesture
   scale = 1,       // typography + icon scale (matches the brief panel's stageScale)
-  lift = 0,        // px translated up during a liquid drag (wheel "rises" with finger)
-  finger = null,   // { x, y } pointer position during a liquid drag
 }) {
   const cx = width / 2;
   const cy = height + (radius - protrusion); // pivot below screen
@@ -44,19 +42,14 @@ function Wheel({
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (!mode) {
-        // Commit to liquid as soon as the gesture has a clear upward
-        // component — small dy is enough, and we don't need it to
-        // dominate dx as long as the user is actually moving up. This
-        // is the priority gesture; rotate only wins for clearly
-        // horizontal moves with negligible vertical travel.
-        if (dy < -6 && Math.abs(dy) >= Math.abs(dx) * 0.6) {
+        if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx) * 1.2 && dy < 0) {
           mode = 'liquid';
           onLiquidStart && onLiquidStart({ startX, startY, currentY: ev.clientY });
           window.removeEventListener('pointermove', move);
           window.removeEventListener('pointerup', up);
           return;
         }
-        if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.4) mode = 'rotate';
+        if (Math.abs(dx) > 6) mode = 'rotate';
       }
       if (mode === 'rotate') {
         // dx → angle change at top of arc → index change
@@ -86,130 +79,40 @@ function Wheel({
     window.addEventListener('pointerup', up);
   };
 
-  // Per-icon spring physics — each icon has its own "perceived" wheel
-  // index that springs toward the actual `index`. Stiffness drops with
-  // distance from the selected position, so the icon under the user's
-  // finger tracks tightly while icons further out trail behind. Picture
-  // a blanket being dragged across the floor: the bit you hold moves
-  // immediately, the rest follows with lag.
-  const iconStatesRef = React.useRef([]);
-  // Keep the per-icon state array in sync with sections; preserve any
-  // existing animation state across renders.
-  if (iconStatesRef.current.length !== sections.length) {
-    const arr = iconStatesRef.current;
-    while (arr.length < sections.length) {
-      arr.push({ perceivedIdx: arr.length, velocity: 0 });
-    }
-    arr.length = sections.length;
-  }
-  const [, setSpringTick] = React.useState(0);
-  const animRef = React.useRef({ raf: 0, running: false });
-
-  React.useEffect(() => {
-    if (animRef.current.running) return;
-    animRef.current.running = true;
-    const step = () => {
-      const target = indexRef.current;
-      const states = iconStatesRef.current;
-      let anyMoving = false;
-      for (let i = 0; i < states.length; i++) {
-        const s = states[i];
-        if (!s) continue;
-        // Subtle per-icon lag — closer to the selected slot follows
-        // tightly, outer icons drift slightly behind. Damping kept high
-        // so springs settle without overshoot/bounce.
-        const dist = Math.abs(i - target);
-        const stiffness = Math.max(0.12, 0.30 - dist * 0.03);
-        const damping = 0.55;
-        const dx = target - s.perceivedIdx;
-        s.velocity = s.velocity * damping + dx * stiffness;
-        s.perceivedIdx += s.velocity;
-        if (Math.abs(dx) > 0.003 || Math.abs(s.velocity) > 0.003) {
-          anyMoving = true;
-        } else {
-          // Snap to target once spring is essentially done so the wheel
-          // settles cleanly at integer indices for snap-to-green-line.
-          s.perceivedIdx = target;
-          s.velocity = 0;
-        }
-      }
-      setSpringTick((t) => (t + 1) & 0xffff);
-      if (anyMoving) {
-        animRef.current.raf = requestAnimationFrame(step);
-      } else {
-        animRef.current.running = false;
-      }
-    };
-    animRef.current.raf = requestAnimationFrame(step);
-    return () => {};
-  }, [index]);
-
-  // Render sections within ±90° of top — each icon uses its OWN spring
-  // position, not the wheel's global index, so they can drift relative
-  // to each other during fast rotation.
+  // Render sections within ±90° of top
   const visible = [];
   for (let i = 0; i < sections.length; i++) {
-    const myIdx = (iconStatesRef.current[i] && iconStatesRef.current[i].perceivedIdx) ?? i;
-    const delta = (i - myIdx) * sectionAngleRad;
+    const delta = (i - index) * sectionAngleRad;
     if (Math.abs(delta) > RAD(95)) continue;
     const angle = -Math.PI / 2 + delta;
     // Place the icon/label cluster inside the dial, not on the rim.
     const rInner = radius - 38;
     const x = cx + rInner * Math.cos(angle);
     const y = cy + rInner * Math.sin(angle);
-    // distance from top (0 = selected). Use the wheel's actual index
-    // here so icon-size/opacity respond to the *intended* selection,
-    // not the spring's transient lag — otherwise sizes pulse during
-    // the trailing animation.
+    // distance from top (0 = selected)
     const offset = Math.abs(i - index);
     const opacity = Math.max(0, 1 - offset * 0.35);
     const scale = Math.max(0.55, 1 - offset * 0.18);
     visible.push({ i, x, y, angle, opacity, scale, section: sections[i] });
   }
 
-  // Dial geometry — simple: ring rises 1:1 with the (spring-lagged)
-  // liquid lift, all icons stay on the ring, and the whole wheel fades
-  // out as it nears the top of its travel so the lower hemisphere is
-  // never exposed. No tongue / no bell deformation — the elastic feel
-  // comes from liquid.lift's own spring in app.jsx.
-  const liftN = Number(lift) || 0;
-  const dialCy = cy - liftN;
-  // Fade the wheel out in the last ~120px of its travel so the lifted
-  // dial never shows its full circle silhouette before disappearing.
-  const fadeStart = 240;
-  const fadeRange = 140;
-  const wheelOpacity = liftN > fadeStart
-    ? Math.max(0, 1 - (liftN - fadeStart) / fadeRange)
-    : 1;
-  // Icons stay on the (lifted) dial center — selected icon at top,
-  // others fanned around the rim. Per-icon spring lag still applies
-  // on the index axis so outer icons trail behind during rotation.
-  const iconRecomputed = visible.map((v) => {
-    const rInner = radius - 38;
-    return {
-      ...v,
-      x: cx + rInner * Math.cos(v.angle),
-      y: dialCy + rInner * Math.sin(v.angle),
-    };
-  });
+  // Dial path — a black filled circle, but only the top portion shows above the
+  // screen edge. We render as <circle>; overflow is clipped by the parent.
   return (
     <div
+      onPointerDown={onPointerDown}
       style={{
-        // Outer wrapper: always full screen, transparent to pointer
-        // events so it doesn't swallow taps above the dial. The SVG +
-        // icons render inside; the actual touch-capture surface is a
-        // smaller bottom-anchored div appended at the end.
         position: 'absolute',
-        inset: 0,
-        pointerEvents: 'none',
+        left: 0, right: 0, bottom: 0,
+        height: protrusion + 80, // gesture zone slightly taller than visible dial
+        touchAction: 'none',
         userSelect: 'none',
         zIndex: 5,
-        overflow: 'hidden',
       }}
     >
       <svg
-        width={width} height={height}
-        viewBox={`0 0 ${width} ${height}`}
+        width={width} height={protrusion + 80}
+        viewBox={`0 ${height - protrusion - 80} ${width} ${protrusion + 80}`}
         style={{ position: 'absolute', inset: 0, overflow: 'visible' }}
       >
         <defs>
@@ -222,42 +125,47 @@ function Wheel({
             <stop offset="100%" stopColor="rgba(255,255,255,0)" />
           </linearGradient>
         </defs>
-        {/* Dial — circle that lifts with the gesture and fades near the
-            end of its travel so the lower hemisphere never enters view. */}
-        <g opacity={wheelOpacity}>
-          <circle cx={cx} cy={dialCy} r={radius} fill="#0B0B0E" />
-          <circle
-            cx={cx} cy={dialCy} r={radius - 6}
-            fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"
-          />
-          <circle
-            cx={cx} cy={dialCy} r={radius - 56}
-            fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5"
-          />
-          {/* selection indicator — small tick above the top of the dial */}
-          <line
-            x1={cx} y1={dialCy - radius - 12}
-            x2={cx} y2={dialCy - radius - 4}
-            stroke={accent} strokeWidth="2" strokeLinecap="round"
-          />
-          <circle cx={cx} cy={dialCy - radius - 16} r="2.5" fill={accent} />
-        </g>
+        {/* dial body */}
+        <circle cx={cx} cy={cy} r={radius} fill="#0B0B0E" />
+        {/* subtle inner ring (rim track where icons sit) */}
+        <circle
+          cx={cx} cy={cy} r={radius - 6}
+          fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"
+        />
+        <circle
+          cx={cx} cy={cy} r={radius - 56}
+          fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5"
+        />
+        {/* liquid slosh — a wave layer at the top of the dial that wobbles
+            with scroll velocity and time. Subtle when idle, animated when scrolling. */}
+        <LiquidSlosh
+          cx={cx} cy={cy} R={radius}
+          width={width} height={height} protrusion={protrusion}
+          velocity={velocity} accent={accent}
+        />
+        {/* top highlight */}
+        <circle cx={cx} cy={cy} r={radius} fill="url(#dialShine)" />
+        {/* selection indicator — small tick at 12 o'clock outside dial */}
+        <line
+          x1={cx} y1={cy - radius - 12}
+          x2={cx} y2={cy - radius - 4}
+          stroke={accent} strokeWidth="2" strokeLinecap="round"
+        />
+        <circle cx={cx} cy={cy - radius - 16} r="2.5" fill={accent} />
       </svg>
 
-      {/* section icons — absolutely positioned divs in viewport-y space
-          (container is bottom-anchored at full height). */}
-      {iconRecomputed.map(({ i, x, y, opacity, scale, section }) => {
+      {/* section icons — absolutely positioned divs, easier for SVG icon swap */}
+      {visible.map(({ i, x, y, opacity, scale, section }) => {
         const isSelected = Math.abs(i - index) < 0.5;
+        // Rotate icon so it stays "upright" relative to wheel? Keep upright to viewer.
         return (
           <div
             key={section.id}
             style={{
               position: 'absolute',
-              left: x, top: y,
+              left: x, top: y - (height - protrusion - 80),
               transform: `translate(-50%, -50%) scale(${scale})`,
-              // Multiply by wheelOpacity so icons fade with the dial
-              // during the final stretch of the lift.
-              opacity: opacity * wheelOpacity,
+              opacity,
               transition: 'opacity 0.18s ease-out',
               pointerEvents: 'none',
               display: 'flex',
@@ -306,19 +214,6 @@ function Wheel({
           </div>
         );
       })}
-      {/* Touch-capture surface — only the bottom dial area accepts the
-          gesture, so the wrapper's full-screen footprint doesn't block
-          taps in the brief panel above. */}
-      <div
-        onPointerDown={onPointerDown}
-        style={{
-          position: 'absolute',
-          left: 0, right: 0, bottom: 0,
-          height: protrusion + 80,
-          touchAction: 'none',
-          pointerEvents: 'auto',
-        }}
-      />
     </div>
   );
 }
