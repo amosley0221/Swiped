@@ -43,14 +43,19 @@ function Wheel({
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (!mode) {
-        if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx) * 1.2 && dy < 0) {
+        // Commit to liquid as soon as the gesture has a clear upward
+        // component — small dy is enough, and we don't need it to
+        // dominate dx as long as the user is actually moving up. This
+        // is the priority gesture; rotate only wins for clearly
+        // horizontal moves with negligible vertical travel.
+        if (dy < -6 && Math.abs(dy) >= Math.abs(dx) * 0.6) {
           mode = 'liquid';
           onLiquidStart && onLiquidStart({ startX, startY, currentY: ev.clientY });
           window.removeEventListener('pointermove', move);
           window.removeEventListener('pointerup', up);
           return;
         }
-        if (Math.abs(dx) > 6) mode = 'rotate';
+        if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.4) mode = 'rotate';
       }
       if (mode === 'rotate') {
         // dx → angle change at top of arc → index change
