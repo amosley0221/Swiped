@@ -422,21 +422,21 @@ function App() {
   const liftMax = Math.max(H * 0.6, wheelTotalHeight + 100);
 
   // Liquid drag: pinch the dial's icon and lift it; the WHEEL ITSELF rises
-  // with the finger, with a small bit of trailing for a jelly feel. The
+  // with the finger 1:1, with a soft squish past the threshold. The
   // DetailView sits underneath the whole time and becomes visible as the
-  // wheel slides up away from the bottom. No separate page rises from
-  // below — the wheel is the page.
+  // wheel slides up away from the bottom.
   const onLiquidStart = ({ startX, startY }) => {
     setLiquid({ active: true, progress: 0, finger: { x: startX, y: startY }, lift: 0 });
     const startTime = performance.now();
     const move = (ev) => {
       const dy = startY - ev.clientY;
-      // Slight elastic resistance: the wheel lags ~10% behind the finger,
-      // and once you push past liftMax the lift squishes asymptotically.
       const raw = Math.max(0, dy);
+      // 1:1 follow up to liftMax, then asymptotic squish past the threshold.
+      // No leading damping — the wheel must visibly leave the bottom even
+      // on tiny drags, or the gesture feels broken.
       const lift = raw < liftMax
-        ? raw * 0.92
-        : liftMax * 0.92 + (raw - liftMax) * 0.25;
+        ? raw
+        : liftMax + (raw - liftMax) * 0.2;
       const p = Math.max(0, Math.min(1, lift / liftMax));
       setLiquid((l) => ({ ...l, progress: p, finger: { x: ev.clientX, y: ev.clientY }, lift }));
     };
@@ -1095,7 +1095,6 @@ function App() {
           scale={stageScale}
           onJump={(i) => setTargetIdx(i)}
           onOpenPicker={() => setPickerOpen(true)}
-          onLiquidStart={onLiquidStart}
         />
       </div>
       {/* small upward arrow chip floating above wheel — touch handle hint */}
@@ -1396,98 +1395,45 @@ function BriefPanel({ section, content, accent, tf, pulseKey, scale = 1 }) {
   );
 }
 
-function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpenPicker, onLiquidStart }) {
-  // Strip sits above the wheel (zIndex 10 > wheel's 5) so taps + horizontal
-  // scrubs land here. But the strip's hit area visually overlaps the user's
-  // natural target for "grab the icon and drag up", so we defer commitment:
-  // on pointer-down we record the start and attach window-level move/up
-  // listeners; the first move decides whether to scrub (mostly-horizontal)
-  // or forward the gesture to the wheel's liquid drag (mostly-vertical
-  // upward). Window-level listeners ensure we keep getting moves even when
-  // the finger drifts off the strip itself.
-  const stripRef = React.useRef(null);
-
-  const idxAt = (clientX) => {
-    const el = stripRef.current;
-    if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
-    const ratio = rect.width > 0 ? x / rect.width : 0;
-    return Math.max(0, Math.min(sections.length - 1, Math.round(ratio * (sections.length - 1))));
-  };
-
-  const onPointerDown = (e) => {
-    const startX = e.clientX;
-    const startY = e.clientY;
-    let mode = null; // 'scrub' | 'released' | null
-    let lastIdx = -1;
-    const move = (ev) => {
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-      if (mode === null) {
-        // Vertical-up dominant gesture? Hand off to the wheel's liquid drag.
-        if (dy < -8 && Math.abs(dy) > Math.abs(dx) * 1.1) {
-          mode = 'released';
-          window.removeEventListener('pointermove', move);
-          window.removeEventListener('pointerup', up);
-          if (onLiquidStart) onLiquidStart({ startX, startY, currentY: ev.clientY });
-          return;
-        }
-        // Mostly horizontal? Start scrubbing.
-        if (Math.abs(dx) > 4) {
-          mode = 'scrub';
-          const i = idxAt(startX);
-          if (i != null) { lastIdx = i; onJump && onJump(i); }
-        }
-      }
-      if (mode === 'scrub') {
-        const i = idxAt(ev.clientX);
-        if (i != null && i !== lastIdx) { lastIdx = i; onJump && onJump(i); }
-      }
-    };
-    const up = (ev) => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      // Tap-without-drag → treat as jump to that dot.
-      if (mode === null) {
-        const i = idxAt(ev.clientX);
-        if (i != null) onJump && onJump(i);
-      }
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  };
-
+function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpenPicker }) {
+  // Strip overlays the wheel's top-center area. To avoid stealing the
+  // wheel's natural rotate / lift gestures, only the individual dots and
+  // the grid button accept pointer events; the strip itself is transparent
+  // to taps + drags, so anything that misses a dot falls through to the
+  // wheel below.
   return (
     <div style={{
       position: 'absolute', left: 0, right: 0, bottom,
       display: 'flex', justifyContent: 'center', alignItems: 'center',
-      gap: 6 * scale, zIndex: 10,
+      gap: 6 * scale, zIndex: 10, pointerEvents: 'none',
     }}>
-      <div
-        ref={stripRef}
-        onPointerDown={onPointerDown}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6 * scale,
-          // Narrower vertical padding so the strip doesn't visually overlap
-          // the wheel's icon area; horizontal padding stays generous so taps
-          // on individual dots are still forgiving.
-          padding: `${6 * scale}px ${10 * scale}px`,
-          touchAction: 'none', cursor: 'pointer',
-        }}
-      >
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6 * scale,
+        padding: `${6 * scale}px ${2 * scale}px`,
+      }}>
         {sections.map((s, i) => {
           const dist = Math.abs(i - index);
           const isSelected = dist < 0.5;
           return (
-            <div key={s.id} style={{
-              width: (isSelected ? 16 : 4) * scale,
-              height: 4 * scale,
-              borderRadius: 2 * scale,
-              background: isSelected ? accent : 'rgba(11,11,14,0.18)',
-              transition: 'width 0.25s ease, background 0.25s ease',
-              pointerEvents: 'none',
-            }} />
+            <button
+              key={s.id}
+              onClick={() => onJump && onJump(i)}
+              aria-label={`Jump to ${s.name}`}
+              style={{
+                appearance: 'none', border: 0, background: 'transparent',
+                padding: `${6 * scale}px ${4 * scale}px`,
+                cursor: 'pointer', lineHeight: 0,
+                pointerEvents: 'auto',
+              }}
+            >
+              <div style={{
+                width: (isSelected ? 16 : 4) * scale,
+                height: 4 * scale,
+                borderRadius: 2 * scale,
+                background: isSelected ? accent : 'rgba(11,11,14,0.18)',
+                transition: 'width 0.25s ease, background 0.25s ease',
+              }} />
+            </button>
           );
         })}
       </div>
@@ -1501,6 +1447,7 @@ function SectionDots({ sections, index, accent, bottom, scale = 1, onJump, onOpe
             appearance: 'none', border: 0, background: 'transparent',
             padding: `${10 * scale}px ${8 * scale}px`,
             cursor: 'pointer', color: 'rgba(11,11,14,0.55)', lineHeight: 0,
+            pointerEvents: 'auto',
           }}
         >
           <svg width={14 * scale} height={14 * scale} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
