@@ -428,10 +428,13 @@ function App() {
       const elapsed = performance.now() - startTime;
       const velocity = dy / Math.max(50, elapsed);
       const cur = liquidRef.current;
-      if (cur.progress > 0.45 || (velocity > 1.2 && cur.progress > 0.15)) {
-        animateSheet(cur, { progress: 1, fingerY: 0 }, 280, () => setDetailOpen(true));
+      if (cur.progress > 0.4 || (velocity > 1.0 && cur.progress > 0.1)) {
+        // Quick spring-up to fill the screen. Faster than the previous tween
+        // so the gesture feels like a snap, not a glide.
+        animateSheet(cur, { progress: 1, fingerY: 0 }, 220, () => setDetailOpen(true));
       } else {
-        animateSheet(cur, { progress: 0, fingerY: H }, 220, () => {
+        // Fall back to the dial — drop the card and tuck the icon down.
+        animateSheet(cur, { progress: 0, fingerY: H }, 200, () => {
           setLiquid({ active: false, progress: 0, finger: null });
         });
       }
@@ -450,7 +453,9 @@ function App() {
     const opening = target.progress > fromP;
     const tick = () => {
       const k = Math.min(1, (performance.now() - startT) / duration);
-      const eased = opening ? 1 - Math.pow(1 - k, 3) : Math.pow(k, 2);
+      // Quintic ease-out on open (lands hard) so the sheet "snaps" into
+      // place; quadratic ease-in on close so the dismissal is just a tuck.
+      const eased = opening ? 1 - Math.pow(1 - k, 5) : Math.pow(k, 2);
       const p = fromP + (target.progress - fromP) * eased;
       const fy = fromY + (target.fingerY - fromY) * eased;
       setLiquid((l) => ({ ...l, progress: p, finger: { x: fingerX, y: fy } }));
@@ -1089,7 +1094,14 @@ function App() {
 
       {/* Sheet — black curved panel. Top edge peaks at the finger; the edges
           trail below by a lag that shrinks as the sheet nears fully open. */}
-      <LiquidReveal path={sheetPathD} progress={liquid.progress} />
+      <LiquidReveal
+        path={sheetPathD}
+        progress={liquid.progress}
+        finger={liquid.finger}
+        section={selected}
+        accent={t.accent}
+        scale={stageScale}
+      />
 
       {/* Detail content lives inside the same clip-path, so its visible edge
           follows the curve. The inner div translates the content down to the
