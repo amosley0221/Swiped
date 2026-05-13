@@ -167,64 +167,64 @@ function Wheel({
     visible.push({ i, x, y, angle, opacity, scale, section: sections[i] });
   }
 
-  // Slime / bell shape — the wheel's outline is a closed path whose
-  // peak follows the finger during a liquid drag. At rest the peak
-  // sits at the natural dial top (cx, H-protrusion) and the sides
-  // anchor at the screen bottom corners, so the silhouette reads as
-  // the original dial arc. As the user drags, finger.x slides the
-  // peak sideways and finger.y lifts it; the sides creep up at a
-  // fraction of the lift rate so the bell stretches taller and
-  // slightly inward — slime being pulled by a fingertip.
+  // Dial geometry — the wheel is rendered as the original ring (circle
+  // arc with all icons visible around the rim) plus a slime "tongue"
+  // that protrudes from the dial's top up to the user's finger during a
+  // liquid drag. The selected icon rides the tongue's tip; everything
+  // else stays on the ring.
   const liftN = Number(lift) || 0;
+  // The dial itself rises only slightly during the gesture (~25% of
+  // lift) so the user can still see all the icons around the rim. The
+  // finger position drives the tongue's tip.
+  const dialLift = liftN * 0.25;
+  const dialCy = cy - dialLift;
   const peakX = (finger && typeof finger.x === 'number') ? finger.x : cx;
-  const restPeakY = height - protrusion;
+  // Natural top of the dial (where the tongue meets the ring).
+  const dialTopX = cx;
+  const dialTopY = dialCy - radius;
+  // Tongue peak — finger position during a drag, or just the dial
+  // top at rest (so the path collapses to nothing visible).
   const peakY = (finger && typeof finger.y === 'number')
     ? Math.max(0, finger.y)
-    : Math.max(0, restPeakY - liftN);
-  // Side anchors creep up at ~30% of lift. Stays at screen bottom
-  // when fully at rest so the dial silhouette matches what it was.
-  const sidesY = Math.max(0, height - liftN * 0.3);
-  // Bell half-width — widest at rest (=W/2 so anchors at screen
-  // edges), narrows slightly as it lifts so the bell becomes more
-  // peaked.
-  const liftFrac = Math.min(1, liftN / Math.max(150, height * 0.4));
-  const halfWidth = Math.max(width * 0.4, width / 2 - liftFrac * width * 0.1);
-  const leftAnchor = Math.max(0, peakX - halfWidth);
-  const rightAnchor = Math.min(width, peakX + halfWidth);
-  // Cubic bezier control offsets — these set the bell's "roundness".
-  // Matches the curvature of the original circle dial when at rest.
-  const cp = halfWidth * 0.55;
+    : dialTopY;
+  // Tongue base half-width on the dial's surface. Widens slightly as
+  // it pulls farther so the protrusion reads as a thickening blob
+  // rather than a thin spike.
+  const pull = Math.max(0, dialTopY - peakY) + Math.abs(peakX - dialTopX);
+  const baseHalfWidth = 38 + Math.min(40, pull * 0.18);
+  const leftBase = dialTopX - baseHalfWidth;
+  const rightBase = dialTopX + baseHalfWidth;
+  // Tongue tip half-width — narrower so the shape tapers toward the
+  // finger.
+  const tipHalf = 26;
+  const leftTip = peakX - tipHalf;
+  const rightTip = peakX + tipHalf;
+  // Control points lean toward the finger so the tongue's sides curve
+  // naturally as it stretches.
+  const cpY = (dialTopY + peakY) / 2;
   const r = (n) => n.toFixed(1);
-  const dialPath = [
-    `M 0 ${r(height + 20)}`,
-    `L 0 ${r(sidesY)}`,
-    `L ${r(leftAnchor)} ${r(sidesY)}`,
-    `C ${r(leftAnchor + cp)} ${r(sidesY)}, ${r(peakX - cp)} ${r(peakY)}, ${r(peakX)} ${r(peakY)}`,
-    `C ${r(peakX + cp)} ${r(peakY)}, ${r(rightAnchor - cp)} ${r(sidesY)}, ${r(rightAnchor)} ${r(sidesY)}`,
-    `L ${r(width)} ${r(sidesY)}`,
-    `L ${r(width)} ${r(height + 20)}`,
-    'Z',
+  const tonguePath = [
+    `M ${r(leftBase)} ${r(dialTopY)}`,
+    `C ${r(leftBase)} ${r(cpY)}, ${r(leftTip)} ${r(cpY)}, ${r(leftTip)} ${r(peakY)}`,
+    `Q ${r(peakX)} ${r(peakY - tipHalf * 0.6)}, ${r(rightTip)} ${r(peakY)}`,
+    `C ${r(rightTip)} ${r(cpY)}, ${r(rightBase)} ${r(cpY)}, ${r(rightBase)} ${r(dialTopY)}`,
+    `Z`,
   ].join(' ');
-  // Recompute icon positions to ride the bell. Selected icon glues to
-  // the peak; others orbit around it on a virtual arc whose center is
-  // shifted toward the finger so the whole cluster leans with the
-  // gesture. Spring lag from iconStatesRef still applies on the
-  // index axis, so outer icons trail behind during fast rotation.
+  // Icons — restore the original ring layout. Selected icon rides the
+  // tongue's tip; others orbit the dial center as before. Per-icon
+  // spring lag applies on the index axis only.
   const peakSelectedIdx = Math.round(index);
   const iconRecomputed = visible.map((v) => {
-    if (v.i === peakSelectedIdx) {
-      // Selected icon glued to the peak — that's the slime tip.
+    if (v.i === peakSelectedIdx && finger) {
+      // Selected icon rides the tongue tip during the drag.
       return { ...v, x: peakX, y: peakY };
     }
-    // Others: rotated around the lifted center. Center is the peak
-    // shifted down by the original dial's radius along the local
-    // "up" direction (just straight down here for simplicity).
-    const localCx = peakX;
-    const localCy = peakY + (radius - 38);
+    // Other icons orbit the (lifted) dial center, same as the original.
+    const rInner = radius - 38;
     return {
       ...v,
-      x: localCx + (radius - 38) * Math.cos(v.angle),
-      y: localCy + (radius - 38) * Math.sin(v.angle),
+      x: cx + rInner * Math.cos(v.angle),
+      y: dialCy + rInner * Math.sin(v.angle),
     };
   });
   return (
@@ -257,13 +257,25 @@ function Wheel({
             <stop offset="100%" stopColor="rgba(255,255,255,0)" />
           </linearGradient>
         </defs>
-        {/* dial body — bell / slime shape whose peak follows the finger.
-            At rest the bell sits at the natural dial position; during a
-            lift the peak rides the finger position (x and y both), and
-            the sides creep up at a fraction of the lift rate so the
-            silhouette stretches taller and narrower. */}
-        <path d={dialPath} fill="#0B0B0E" />
-        {/* selection indicator — small tick above the bell's peak */}
+        {/* Dial ring — original full-circle so the user sees the rim and
+            all the icons fanned out around it. Lifts slightly with the
+            gesture (~25% of lift) but doesn't deform. */}
+        <circle cx={cx} cy={dialCy} r={radius} fill="#0B0B0E" />
+        {/* Inner rim track so the ring reads as a ring. */}
+        <circle
+          cx={cx} cy={dialCy} r={radius - 6}
+          fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"
+        />
+        <circle
+          cx={cx} cy={dialCy} r={radius - 56}
+          fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5"
+        />
+        {/* Tongue — only drawn during an active drag. A teardrop-shaped
+            slime protrusion from the dial's top up to the finger.
+            Selected icon rides its tip. */}
+        {finger && <path d={tonguePath} fill="#0B0B0E" />}
+        {/* selection indicator — small tick above where the selected
+            icon currently is (tongue tip during drag, dial top at rest). */}
         <line
           x1={peakX} y1={peakY - 16}
           x2={peakX} y2={peakY - 8}
