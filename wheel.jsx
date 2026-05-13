@@ -19,6 +19,7 @@ function Wheel({
   onSettle,        // (snappedIdx) => void   when fling settles
   onLiquidStart,   // ({startX, startY}) => start liquid gesture
   scale = 1,       // typography + icon scale (matches the brief panel's stageScale)
+  lift = 0,        // px translated up during a liquid drag (wheel "rises" with finger)
 }) {
   const cx = width / 2;
   const cy = height + (radius - protrusion); // pivot below screen
@@ -108,6 +109,8 @@ function Wheel({
         touchAction: 'none',
         userSelect: 'none',
         zIndex: 5,
+        transform: lift ? `translate3d(0, ${-lift}px, 0)` : undefined,
+        willChange: lift ? 'transform' : undefined,
       }}
     >
       <svg
