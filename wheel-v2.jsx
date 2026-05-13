@@ -119,20 +119,20 @@ function Wheel({
         touchAction: 'none',
         userSelect: 'none',
         zIndex: 5,
+        // Clip the bottom — the dial is a full circle whose lower half
+        // normally sits below the screen edge. Without this, lifting the
+        // wheel exposes the rest of the circle and the dial reads as a
+        // full sphere instead of a half-disk sliding off the top.
+        overflow: 'hidden',
         transform: liftTransform,
         WebkitTransform: liftTransform,
-        // CSS spring transition — the wheel chases the finger's target
-        // position with a brief overshoot, which is what gives the
-        // "jelly" feel without any rAF interpolation in JS.
-        transition: 'transform 90ms cubic-bezier(0.34, 1.56, 0.64, 1)',
-        WebkitTransition: '-webkit-transform 90ms cubic-bezier(0.34, 1.56, 0.64, 1)',
         willChange: 'transform',
       }}
     >
       <svg
         width={width} height={protrusion + 80}
         viewBox={`0 ${height - protrusion - 80} ${width} ${protrusion + 80}`}
-        style={{ position: 'absolute', inset: 0, overflow: 'visible' }}
+        style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}
       >
         <defs>
           <radialGradient id="dialShine" cx="50%" cy="0%" r="80%">
