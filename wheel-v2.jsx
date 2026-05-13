@@ -110,13 +110,14 @@ function Wheel({
   // and a value across renders.
   const liftN = Number(lift) || 0;
   const liftTransform = `translate3d(0, ${-liftN}px, 0)`;
-  // Fade the dial out as it rises so the user never sees its lower
-  // hemisphere or a hard flat bottom — instead the wheel dissolves
-  // upward as the gesture progresses. Uses a soft curve so the wheel
-  // stays mostly opaque for the first half of the travel.
-  const fadeStart = 40; // px of free lift before any fade kicks in
+  // Fade the dial out only in the final stretch of its travel, so the
+  // user gets to see the jelly motion play out while the wheel is
+  // still solid. Below 180px lift the dial stays fully opaque; from
+  // there it ramps down sharply over the next ~120px.
+  const fadeStart = 180;
+  const fadeRange = 120;
   const liftFade = liftN > fadeStart
-    ? Math.max(0, 1 - Math.pow((liftN - fadeStart) / 200, 1.4))
+    ? Math.max(0, 1 - (liftN - fadeStart) / fadeRange)
     : 1;
   return (
     <div

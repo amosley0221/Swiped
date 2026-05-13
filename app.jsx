@@ -552,8 +552,10 @@ function App() {
       }
       const commit = dy > 100 || velocity > 1.0;
       if (commit) {
-        setDetailOpen(false);
+        // Don't flip detailOpen until the animation finishes — keeps the
+        // panel mounted so it fades cleanly while liquid.progress drops.
         animateLift(cur, 0, 280, () => {
+          setDetailOpen(false);
           setLiquid({ active: false, progress: 0, finger: null, lift: 0 });
         });
       } else {
@@ -1154,23 +1156,19 @@ function App() {
           follows the curve. The inner div translates the content down to the
           peak so text rides at the fingertip while the corners stretch up
           from below along the curve. */}
-      {(detailOpen || (liquid.active && liquid.progress < 1)) && (
+      {detailOpen && (
         <div
           style={{
-            // Mounted whenever the detail should be visible (open) or
-            // mid-close-animation. Opacity = liquid.progress during close
-            // so the page fades out as the wheel returns into view; full
-            // opacity once the open gesture has committed.
+            // Panel is mounted only when detailOpen=true — kept up
+            // throughout the close-drag and only unmounted in the close
+            // animation's done-callback. Opacity fades with progress
+            // during the close drag; otherwise full 1.0.
             position: 'absolute', inset: 0,
             zIndex: 40,
             background: '#0B0B0E',
-            opacity: detailOpen && !liquid.active
-              ? 1
-              : (liquid.active ? Math.max(0, liquid.progress) : 0),
-            pointerEvents: detailOpen ? 'auto' : 'none',
-            animation: detailOpen && !liquid.active
-              ? 'swipedDetailReveal 260ms ease-out'
-              : 'none',
+            opacity: liquid.active ? Math.max(0, liquid.progress) : 1,
+            pointerEvents: 'auto',
+            animation: liquid.active ? 'none' : 'swipedDetailReveal 260ms ease-out',
             willChange: 'opacity, transform',
           }}
         >
