@@ -85,17 +85,81 @@ function Wheel({
     window.addEventListener('pointerup', up);
   };
 
-  // Render sections within ±90° of top
+  // Per-icon spring physics — each icon has its own "perceived" wheel
+  // index that springs toward the actual `index`. Stiffness drops with
+  // distance from the selected position, so the icon under the user's
+  // finger tracks tightly while icons further out trail behind. Picture
+  // a blanket being dragged across the floor: the bit you hold moves
+  // immediately, the rest follows with lag.
+  const iconStatesRef = React.useRef([]);
+  // Keep the per-icon state array in sync with sections; preserve any
+  // existing animation state across renders.
+  if (iconStatesRef.current.length !== sections.length) {
+    const arr = iconStatesRef.current;
+    while (arr.length < sections.length) {
+      arr.push({ perceivedIdx: arr.length, velocity: 0 });
+    }
+    arr.length = sections.length;
+  }
+  const [, setSpringTick] = React.useState(0);
+  const animRef = React.useRef({ raf: 0, running: false });
+
+  React.useEffect(() => {
+    if (animRef.current.running) return;
+    animRef.current.running = true;
+    const step = () => {
+      const target = indexRef.current;
+      const states = iconStatesRef.current;
+      let anyMoving = false;
+      for (let i = 0; i < states.length; i++) {
+        const s = states[i];
+        if (!s) continue;
+        // Distance from the currently-selected slot — stiffness ramps
+        // from 0.32 (icon under finger) down to 0.06 (icons several
+        // positions away). Damping kept loose for visible trailing.
+        const dist = Math.abs(i - target);
+        const stiffness = Math.max(0.06, 0.32 - dist * 0.045);
+        const damping = 0.78;
+        const dx = target - s.perceivedIdx;
+        s.velocity = s.velocity * damping + dx * stiffness;
+        s.perceivedIdx += s.velocity;
+        if (Math.abs(dx) > 0.003 || Math.abs(s.velocity) > 0.003) {
+          anyMoving = true;
+        } else {
+          // Snap to target once spring is essentially done so the wheel
+          // settles cleanly at integer indices for snap-to-green-line.
+          s.perceivedIdx = target;
+          s.velocity = 0;
+        }
+      }
+      setSpringTick((t) => (t + 1) & 0xffff);
+      if (anyMoving) {
+        animRef.current.raf = requestAnimationFrame(step);
+      } else {
+        animRef.current.running = false;
+      }
+    };
+    animRef.current.raf = requestAnimationFrame(step);
+    return () => {};
+  }, [index]);
+
+  // Render sections within ±90° of top — each icon uses its OWN spring
+  // position, not the wheel's global index, so they can drift relative
+  // to each other during fast rotation.
   const visible = [];
   for (let i = 0; i < sections.length; i++) {
-    const delta = (i - index) * sectionAngleRad;
+    const myIdx = (iconStatesRef.current[i] && iconStatesRef.current[i].perceivedIdx) ?? i;
+    const delta = (i - myIdx) * sectionAngleRad;
     if (Math.abs(delta) > RAD(95)) continue;
     const angle = -Math.PI / 2 + delta;
     // Place the icon/label cluster inside the dial, not on the rim.
     const rInner = radius - 38;
     const x = cx + rInner * Math.cos(angle);
     const y = cy + rInner * Math.sin(angle);
-    // distance from top (0 = selected)
+    // distance from top (0 = selected). Use the wheel's actual index
+    // here so icon-size/opacity respond to the *intended* selection,
+    // not the spring's transient lag — otherwise sizes pulse during
+    // the trailing animation.
     const offset = Math.abs(i - index);
     const opacity = Math.max(0, 1 - offset * 0.35);
     const scale = Math.max(0.55, 1 - offset * 0.18);
