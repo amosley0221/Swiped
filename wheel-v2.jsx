@@ -110,15 +110,6 @@ function Wheel({
   // and a value across renders.
   const liftN = Number(lift) || 0;
   const liftTransform = `translate3d(0, ${-liftN}px, 0)`;
-  // Fade the dial out only in the final stretch of its travel, so the
-  // user gets to see the jelly motion play out while the wheel is
-  // still solid. Below 180px lift the dial stays fully opaque; from
-  // there it ramps down sharply over the next ~120px.
-  const fadeStart = 180;
-  const fadeRange = 120;
-  const liftFade = liftN > fadeStart
-    ? Math.max(0, 1 - (liftN - fadeStart) / fadeRange)
-    : 1;
   return (
     <div
       onPointerDown={onPointerDown}
@@ -129,10 +120,9 @@ function Wheel({
         touchAction: 'none',
         userSelect: 'none',
         zIndex: 5,
-        opacity: liftFade,
         transform: liftTransform,
         WebkitTransform: liftTransform,
-        willChange: 'transform, opacity',
+        willChange: 'transform',
       }}
     >
       <svg
