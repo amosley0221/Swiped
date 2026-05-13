@@ -229,17 +229,14 @@ function Wheel({
   });
   return (
     <div
-      onPointerDown={onPointerDown}
       style={{
+        // Outer wrapper: always full screen, transparent to pointer
+        // events so it doesn't swallow taps above the dial. The SVG +
+        // icons render inside; the actual touch-capture surface is a
+        // smaller bottom-anchored div appended at the end.
         position: 'absolute',
-        left: 0, right: 0, bottom: 0,
-        // Container always fills the screen height — the bell peak can
-        // rise anywhere up to y=0 during a slime drag, and the icons
-        // are positioned in viewport-y, so we need the full canvas.
-        // Pointer events on the dial-only region are filtered below
-        // so this big container doesn't swallow gestures at the top.
-        height: liftN > 0 ? height : protrusion + 80,
-        touchAction: 'none',
+        inset: 0,
+        pointerEvents: 'none',
         userSelect: 'none',
         zIndex: 5,
         overflow: 'hidden',
@@ -335,6 +332,19 @@ function Wheel({
           </div>
         );
       })}
+      {/* Touch-capture surface — only the bottom dial area accepts the
+          gesture, so the wrapper's full-screen footprint doesn't block
+          taps in the brief panel above. */}
+      <div
+        onPointerDown={onPointerDown}
+        style={{
+          position: 'absolute',
+          left: 0, right: 0, bottom: 0,
+          height: protrusion + 80,
+          touchAction: 'none',
+          pointerEvents: 'auto',
+        }}
+      />
     </div>
   );
 }
