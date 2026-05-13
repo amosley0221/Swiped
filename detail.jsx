@@ -1307,6 +1307,12 @@ function WeeklyView({
               lineHeight: 1.5,
             }}>
               {(() => {
+                // SwipedICS lives in ics-v2.js; if it never loaded the
+                // calendar fetch effect can't fire. Most likely cause is a
+                // 404 on the script (stale CDN, deploy mid-flight, etc.).
+                if (typeof window !== 'undefined' && !window.SwipedICS) {
+                  return 'ICS script (ics-v2.js) failed to load. Make sure the latest deploy is live and reopen the app.';
+                }
                 const via = icsSourceProxy ? ` via ${icsSourceProxy}` : '';
                 if (icsTotalParsed === 0 && icsRawVeventMatches === 0) {
                   return `Calendar loaded${via} · ${icsBytes} bytes · 0 events (try Refresh, or republish in Outlook)`;
