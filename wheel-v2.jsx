@@ -167,55 +167,24 @@ function Wheel({
     visible.push({ i, x, y, angle, opacity, scale, section: sections[i] });
   }
 
-  // Dial geometry — the ring rises with the gesture (the whole wheel
-  // follows the icon up) while the selected icon glues to the finger.
-  // liquid.lift already springs in app.jsx, so the lift value naturally
-  // lags behind raw finger travel during fast drags — that lag becomes
-  // the visible stretch between the icon and the dial's top, which is
-  // the elastic feel the user is after.
+  // Dial geometry — simple: ring rises 1:1 with the (spring-lagged)
+  // liquid lift, all icons stay on the ring, and the whole wheel fades
+  // out as it nears the top of its travel so the lower hemisphere is
+  // never exposed. No tongue / no bell deformation — the elastic feel
+  // comes from liquid.lift's own spring in app.jsx.
   const liftN = Number(lift) || 0;
   const dialCy = cy - liftN;
-  const peakX = (finger && typeof finger.x === 'number') ? finger.x : cx;
-  // Natural top of the dial (where the tongue meets the ring).
-  const dialTopX = cx;
-  const dialTopY = dialCy - radius;
-  // Tongue peak — finger position during a drag, or dial top at rest.
-  const peakY = (finger && typeof finger.y === 'number')
-    ? Math.max(0, finger.y)
-    : dialTopY;
-  // Pull magnitude — how far the icon has been stretched off the ring.
-  // Drives the tongue's thickness and stretch curve.
-  const pullY = Math.max(0, dialTopY - peakY);
-  const pullX = peakX - dialTopX;
-  const pull = Math.sqrt(pullY * pullY + pullX * pullX);
-  // Tongue base half-width on the dial's surface. Wider when pulled
-  // hard so the protrusion reads as thick elastic, not a spike.
-  const baseHalfWidth = 34 + Math.min(48, pull * 0.12);
-  const leftBase = dialTopX - baseHalfWidth;
-  const rightBase = dialTopX + baseHalfWidth;
-  // Tongue tip half-width — about the icon's radius so it cradles
-  // the selected icon without a visible seam.
-  const tipHalf = 24;
-  const leftTip = peakX - tipHalf;
-  const rightTip = peakX + tipHalf;
-  // Bezier control points pull toward the finger so the sides curve
-  // outward as the stretch grows, like rubber.
-  const cpY = dialTopY + (peakY - dialTopY) * 0.55;
-  const r = (n) => n.toFixed(1);
-  const tonguePath = [
-    `M ${r(leftBase)} ${r(dialTopY)}`,
-    `C ${r(leftBase)} ${r(cpY)}, ${r(leftTip)} ${r(cpY)}, ${r(leftTip)} ${r(peakY)}`,
-    `Q ${r(peakX)} ${r(peakY - tipHalf * 0.7)}, ${r(rightTip)} ${r(peakY)}`,
-    `C ${r(rightTip)} ${r(cpY)}, ${r(rightBase)} ${r(cpY)}, ${r(rightBase)} ${r(dialTopY)}`,
-    `Z`,
-  ].join(' ');
-  // Icons — restore the ring layout. Selected icon rides the tongue
-  // tip; others orbit the (lifted) dial center as before.
-  const peakSelectedIdx = Math.round(index);
+  // Fade the wheel out in the last ~120px of its travel so the lifted
+  // dial never shows its full circle silhouette before disappearing.
+  const fadeStart = 240;
+  const fadeRange = 140;
+  const wheelOpacity = liftN > fadeStart
+    ? Math.max(0, 1 - (liftN - fadeStart) / fadeRange)
+    : 1;
+  // Icons stay on the (lifted) dial center — selected icon at top,
+  // others fanned around the rim. Per-icon spring lag still applies
+  // on the index axis so outer icons trail behind during rotation.
   const iconRecomputed = visible.map((v) => {
-    if (v.i === peakSelectedIdx && finger) {
-      return { ...v, x: peakX, y: peakY };
-    }
     const rInner = radius - 38;
     return {
       ...v,
@@ -253,31 +222,26 @@ function Wheel({
             <stop offset="100%" stopColor="rgba(255,255,255,0)" />
           </linearGradient>
         </defs>
-        {/* Dial ring — original full-circle so the user sees the rim and
-            all the icons fanned out around it. Lifts slightly with the
-            gesture (~25% of lift) but doesn't deform. */}
-        <circle cx={cx} cy={dialCy} r={radius} fill="#0B0B0E" />
-        {/* Inner rim track so the ring reads as a ring. */}
-        <circle
-          cx={cx} cy={dialCy} r={radius - 6}
-          fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"
-        />
-        <circle
-          cx={cx} cy={dialCy} r={radius - 56}
-          fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5"
-        />
-        {/* Tongue — only drawn during an active drag. A teardrop-shaped
-            slime protrusion from the dial's top up to the finger.
-            Selected icon rides its tip. */}
-        {finger && <path d={tonguePath} fill="#0B0B0E" />}
-        {/* selection indicator — small tick above where the selected
-            icon currently is (tongue tip during drag, dial top at rest). */}
-        <line
-          x1={peakX} y1={peakY - 16}
-          x2={peakX} y2={peakY - 8}
-          stroke={accent} strokeWidth="2" strokeLinecap="round"
-        />
-        <circle cx={peakX} cy={peakY - 22} r="2.5" fill={accent} />
+        {/* Dial — circle that lifts with the gesture and fades near the
+            end of its travel so the lower hemisphere never enters view. */}
+        <g opacity={wheelOpacity}>
+          <circle cx={cx} cy={dialCy} r={radius} fill="#0B0B0E" />
+          <circle
+            cx={cx} cy={dialCy} r={radius - 6}
+            fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5"
+          />
+          <circle
+            cx={cx} cy={dialCy} r={radius - 56}
+            fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5"
+          />
+          {/* selection indicator — small tick above the top of the dial */}
+          <line
+            x1={cx} y1={dialCy - radius - 12}
+            x2={cx} y2={dialCy - radius - 4}
+            stroke={accent} strokeWidth="2" strokeLinecap="round"
+          />
+          <circle cx={cx} cy={dialCy - radius - 16} r="2.5" fill={accent} />
+        </g>
       </svg>
 
       {/* section icons — absolutely positioned divs in viewport-y space
@@ -291,7 +255,9 @@ function Wheel({
               position: 'absolute',
               left: x, top: y,
               transform: `translate(-50%, -50%) scale(${scale})`,
-              opacity,
+              // Multiply by wheelOpacity so icons fade with the dial
+              // during the final stretch of the lift.
+              opacity: opacity * wheelOpacity,
               transition: 'opacity 0.18s ease-out',
               pointerEvents: 'none',
               display: 'flex',
