@@ -94,6 +94,14 @@ supabase/functions/ics-proxy/index.ts
                         headers so the PWA can call them. Allowlists upstream
                         hosts. Deployed to the project at
                         vzvhokeusirmfdphibny.supabase.co.
+
+android/                Kotlin WebView wrapper around the deployed PWA so
+                        Swiped ships as a sideloadable APK. Thin — only
+                        loads the URL, keeps localStorage alive, wires up
+                        back-button + external-link handoff. See
+                        android/README.md; APK is built by
+                        .github/workflows/build-apk.yml on tag push and
+                        attached to the GitHub Release.
 ```
 
 ## Data model

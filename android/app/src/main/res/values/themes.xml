@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Swiped" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/swiped_bg</item>
+        <item name="android:navigationBarColor">@color/swiped_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@color/swiped_bg</item>
+    </style>
+
+    <!-- Launcher activity theme — same as base but suppresses the empty
+         white flash while the WebView spins up. -->
+    <style name="Theme.Swiped.Splash" parent="Theme.Swiped">
+        <item name="android:windowBackground">@drawable/splash</item>
+    </style>
+</resources>

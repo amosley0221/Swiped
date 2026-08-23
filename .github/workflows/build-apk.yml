@@ -1,0 +1,97 @@
+# Builds the Swiped Android APK (a WebView wrapper around the deployed PWA)
+# and publishes it as a downloadable artifact + GitHub release asset.
+#
+# Triggers:
+#   - Push a tag matching `v*` (e.g. `v1.0.0`) → creates a Release and
+#     attaches `swiped.apk` so users can download it from the Releases page.
+#   - Manual dispatch from the Actions tab → uploads the APK as a workflow
+#     artifact (useful for testing without cutting a release).
+#
+# The APK is signed with the standard Android debug key by default. That's
+# fine for sideloading (users have to enable "Install unknown apps" once)
+# but shows an "Unknown developer" warning on install. To sign with a real
+# release key, add these repo secrets and the workflow picks them up:
+#   SWIPED_KEYSTORE_BASE64   base64 of the JKS/keystore file
+#   SWIPED_KEYSTORE_PASSWORD keystore password
+#   SWIPED_KEY_ALIAS         key alias inside the keystore
+#   SWIPED_KEY_PASSWORD      key password
+
+name: Build APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write  # required to attach the APK to a Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '11076708'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # If release-signing secrets exist, materialise the keystore and
+      # export the env vars app/build.gradle.kts reads. Otherwise fall
+      # through to debug signing.
+      - name: Prepare release keystore (if configured)
+        if: env.SWIPED_KEYSTORE_BASE64 != ''
+        env:
+          SWIPED_KEYSTORE_BASE64: ${{ secrets.SWIPED_KEYSTORE_BASE64 }}
+        run: |
+          echo "$SWIPED_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/swiped-release.jks"
+          echo "SWIPED_KEYSTORE_PATH=$RUNNER_TEMP/swiped-release.jks" >> "$GITHUB_ENV"
+
+      - name: Export release-signing env
+        if: env.SWIPED_KEYSTORE_PATH != ''
+        run: |
+          echo "SWIPED_KEYSTORE_PASSWORD=${{ secrets.SWIPED_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "SWIPED_KEY_ALIAS=${{ secrets.SWIPED_KEY_ALIAS }}"                 >> "$GITHUB_ENV"
+          echo "SWIPED_KEY_PASSWORD=${{ secrets.SWIPED_KEY_PASSWORD }}"           >> "$GITHUB_ENV"
+
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.7 --distribution-type bin
+
+      - name: Assemble release APK
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Rename APK
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release*.apk out/swiped.apk
+
+      - name: Upload APK artifact (always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: swiped-apk
+          path: android/out/swiped.apk
+          if-no-files-found: error
+
+      - name: Attach APK to Release (on tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/out/swiped.apk
+          name: Swiped ${{ github.ref_name }}
+          generate_release_notes: true
